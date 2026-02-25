@@ -202,8 +202,7 @@ class Music(commands.Cog):
     @check_voice()
     @can_send_message_check()
     @commands.slash_command(name="search", extras={"check_player": False}, cooldown=play_cd, max_concurrency=play_mc,
-                            description=f"{desc_prefix}Tìm kiếm và chọn một trong số kết quả để phát nhạc.",
-                            dm_permission=False)
+                            description=f"{desc_prefix}Tìm kiếm và chọn một trong số kết quả để phát nhạc.")
     async def search(
             self,
             inter: disnake.AppCmdInter,
@@ -2757,8 +2756,7 @@ class Music(commands.Cog):
     @has_source()
     @check_voice()
     @commands.slash_command(description=f"{desc_prefix}Gửi bộ điều khiển người chơi đến một kênh cụ thể/hiện tại.",
-                            extras={"only_voiced": True}, cooldown=controller_cd, max_concurrency=controller_mc,
-                            dm_permission=False)
+                            extras={"only_voiced": True}, cooldown=controller_cd, max_concurrency=controller_mc)
     async def controller(self, inter: disnake.AppCmdInter):
 
         try:

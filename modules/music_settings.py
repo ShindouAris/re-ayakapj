@@ -413,8 +413,7 @@ class MusicSettings(commands.Cog):
 
     @commands.slash_command(
         description=f"{desc_prefix}Tạo/chọn một kênh chuyên dụng để yêu cầu bài hát và tạo một trình phát cố định.",
-        default_member_permissions=disnake.Permissions(manage_guild=True), cooldown=setup_cd, max_concurrency=setup_mc,
-        dm_permission=False
+        default_member_permissions=disnake.Permissions(manage_guild=True), cooldown=setup_cd, max_concurrency=setup_mc
     )
     async def setup(
             self,
@@ -968,8 +967,7 @@ class MusicSettings(commands.Cog):
 
     @commands.slash_command(
         description=f"{desc_prefix}Đặt lại các cài đặt liên quan đến kênh yêu cầu bài hát.",
-        default_member_permissions=disnake.Permissions(manage_guild=True), cooldown=setup_cd, max_concurrency=setup_mc,
-        dm_permission=False
+        default_member_permissions=disnake.Permissions(manage_guild=True), cooldown=setup_cd, max_concurrency=setup_mc
     )
     async def reset(
             self,
@@ -1609,8 +1607,7 @@ class RPCCog(commands.Cog):
         await self.rich_presence.callback(self=self, inter=ctx)
 
     @commands.slash_command(
-        description=f"{desc_prefix}Kích hoạt/Tắt hệ thống hiện diện phong phú trong trạng thái của bạn.", cooldown=rpc_cd,
-        dm_permission=False
+        description=f"{desc_prefix}Kích hoạt/Tắt hệ thống hiện diện phong phú trong trạng thái của bạn.", cooldown=rpc_cd
     )
     async def rich_presence(self, inter: disnake.AppCmdInter):
 
