@@ -346,7 +346,7 @@ class Music(commands.Cog):
 
         deafen_check = True
 
-        if isinstance(ctx, disnake.AppCmdInter) and ctx.application_command.name == self.connect.name:
+        if ctx.application_command.name == self.connect.name:
 
             perms = channel.permissions_for(me)
 
