@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import traceback
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any, Union
 
 import disnake
 from aiohttp import ClientSession
@@ -54,7 +54,7 @@ class ErrorHandler(commands.Cog):
 
         await self.process_interaction_error(inter=inter, error=error)
 
-    async def process_interaction_error(self, inter: disnake.AppCmdInter, error: Exception):
+    async def process_interaction_error(self, inter: Union[disnake.AppCmdInter, disnake.Message], error: Exception):
 
         if isinstance(error, PoolException):
             return
@@ -64,7 +64,7 @@ class ErrorHandler(commands.Cog):
         if isinstance(error, disnake.NotFound) and str(error).endswith("Unknown Interaction"):
             return
 
-        kwargs = {"text": ""}
+        kwargs: dict[str, Any] = {"text": ""}
         send_webhook = False
         color = disnake.Color.red()
 
@@ -78,7 +78,7 @@ class ErrorHandler(commands.Cog):
 
             components = self.components
 
-            kwargs["embeds"] = disnake.Embed(
+            kwargs["embed"] = disnake.Embed(
                 color=color,
                 title = "Đã có một sự cố xảy ra, nhưng đó không phải lỗi của bạn:",
                 description=f"```py\n{repr(error)[:2030].replace(self.bot.http.token, 'mytoken')}```"
@@ -86,7 +86,7 @@ class ErrorHandler(commands.Cog):
 
             if self.bot.config["AUTO_ERROR_REPORT_WEBHOOK"]:
                 send_webhook = True
-                kwargs["embeds"].description += " `Nhà phát triển của tôi sẽ nhận được thông báo về vấn đề.`"
+                kwargs["embed"].description += " `Nhà phát triển của tôi sẽ nhận được thông báo về vấn đề.`"
 
         else:
 
@@ -98,6 +98,9 @@ class ErrorHandler(commands.Cog):
         try:
             await send_message(inter, components=components, **kwargs)
         except:
+            kwargs.pop("embed", None)
+            kwargs.pop("embeds", None)
+
             if not error_msg:
 
                 components = self.components
@@ -108,21 +111,22 @@ class ErrorHandler(commands.Cog):
                     description=f"```py\n{repr(error)[:2030].replace(self.bot.http.token, 'mytoken')}```"
                 )
 
-            if self.bot.config["AUTO_ERROR_REPORT_WEBHOOK"]:
+                if self.bot.config["AUTO_ERROR_REPORT_WEBHOOK"]:
                     send_webhook = True
                     kwargs["embed"].description += " `Nhà phát triển của tôi sẽ nhận được thông báo về vấn đề.`"
 
             else:
 
-                    kwargs["embed"] = []
+                kwargs["embeds"] = []
 
-                    for p in paginator(error_msg):
-                        kwargs["embeds"].append(disnake.Embed(color=color, description=p))
+                for p in paginator(error_msg):
+                    kwargs["embeds"].append(disnake.Embed(color=color, description=p))
+
             try:
                 await send_message(inter, components=components, **kwargs)
             except:
-                    print(("-"*50) + f"\n{error_msg}\n" + ("-"*50))
-                    traceback.print_exc()
+                print(("-"*50) + f"\n{error_msg}\n" + ("-"*50))
+                traceback.print_exc()
 
         if kill_process:
             await asyncio.create_subprocess_shell("kill 1")
@@ -147,7 +151,7 @@ class ErrorHandler(commands.Cog):
             traceback.print_exc()
 
     @commands.Cog.listener("on_command_error")
-    async def on_legacy_command_error(self, ctx: CustomContext, error: Exception):
+    async def on_legacy_command_error(self, ctx: Union[CustomContext, disnake.Message], error: Union[Exception, disnake.HTTPException, disnake.InteractionException, disnake.ClientException]):
 
         if isinstance(error, (commands.CommandNotFound, PoolException)):
             return
@@ -164,7 +168,7 @@ class ErrorHandler(commands.Cog):
             return
 
         error_msg, full_error_msg, kill_process, components, mention_author = parse_error(ctx, error)
-        kwargs = {"content": ""}
+        kwargs: dict[str, Any] = {"content": ""}
         send_webhook = False
 
         if ctx.author.bot or mention_author:
@@ -196,7 +200,7 @@ class ErrorHandler(commands.Cog):
                 kwargs["content"] += f"\n{error_msg}"
 
         try:
-            kwargs["delete_after"] = error.delete_original
+            kwargs["delete_after"] = error.delete_original # type: ignore
         except AttributeError:
             pass
 
@@ -391,7 +395,7 @@ class ErrorHandler(commands.Cog):
             file: Optional[disnake.File] = None
     ):
 
-        kwargs = {
+        kwargs: dict[str, Any] = {
             "username": self.bot.user.name + " - Error Report",
             "avatar_url": self.bot.user.display_avatar.replace(static_format='png').url,
         }
