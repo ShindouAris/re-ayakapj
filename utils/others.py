@@ -323,7 +323,7 @@ async def send_message(
         else:
             await inter.response.edit_message(content=text, **kwargs)
 
-    elif inter.response.is_done() and isinstance(inter, disnake.AppCmdInter):
+    elif inter.response.is_done():
         await inter.edit_original_message(content=text, **kwargs)
 
     else:
