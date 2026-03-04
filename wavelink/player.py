@@ -302,7 +302,8 @@ class Player:
                     "voice": {
                         "sessionId": self._voice_state["sessionId"],
                         "token": self._voice_state["event"]["token"],
-                        "endpoint": self._voice_state["event"]["endpoint"]
+                        "endpoint": self._voice_state["event"]["endpoint"],
+                        "channelId": str(self.channel_id) if self.channel_id else None,
 
                     }
                 }
@@ -357,6 +358,9 @@ class Player:
         channel = self.bot.get_channel(channel_id)
 
         if not guild.voice_client:
+            if not isinstance(channel, disnake.VoiceChannel):
+                __log__.error(f'PLAYER | This channel is not a Voice Channel')
+                return
             await channel.connect(cls=WavelinkVoiceClient, reconnect=True)
             __log__.info(f'PLAYER | Connected to voice channel:: {self.channel_id}')
 
