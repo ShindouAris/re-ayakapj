@@ -278,7 +278,8 @@ async def check_cmd(cmd, inter: Union[disnake.Interaction, disnake.ModalInteract
             c = (await command_check(inter)) if iscoroutinefunction(command_check) else command_check(inter)
             if not c:
                 raise commands.CheckFailure()
-
+    if not cmd._buckets or not cmd._buckets._cooldown:
+        return
     bucket = cmd._buckets.get_bucket(inter)  # type: ignore
     if bucket:
         retry_after = bucket.update_rate_limit()
