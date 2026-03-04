@@ -46,7 +46,21 @@ async def google_search(bot, query: str, *, max_entries: int = 20) -> list:
         ) as r:
 
             text = await r.text()
-            json_text = text[text.find("(") + 1:text.rfind(")")]
+
+            if not text:
+                return []
+
+            start = text.find("(")
+            end = text.rfind(")")
+
+            if start == -1 or end == -1 or end <= start:
+                return []
+
+            json_text = text[start + 1:end]
+
+            if not json_text.strip():
+                return []
+
             return [result[0] for result in json.loads(json_text)[1][:max_entries]]
     except:
         traceback.print_exc()
