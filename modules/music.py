@@ -346,7 +346,9 @@ class Music(commands.Cog):
 
         deafen_check = True
 
-        if ctx.application_command.name == self.connect.name:
+        app_cmd = getattr(ctx, "application_command", None)
+
+        if isinstance(app_cmd, commands.InvokableApplicationCommand) and app_cmd.name == self.connect.name:
 
             perms = channel.permissions_for(me)
 
@@ -2880,8 +2882,10 @@ class Music(commands.Cog):
         text = [f"thêm {user.mention} vào danh sách DJ.",
                 f"<:Play_With_Me:1128555926417330207> **⠂{inter.author.mention} đã thêm {user.mention} Vào danh sách DJ**"]
 
-        if (player.static and channel == player.text_channel) or isinstance(inter.application_command,
-                                                                            commands.InvokableApplicationCommand):
+        app_cmd = getattr(inter, "application_command", None)
+
+        if (player.static and channel == player.text_channel) or isinstance(app_cmd,
+                                             commands.InvokableApplicationCommand):
             await inter.send(f"{user.mention} Đã thêm vào danh sách của DJ!{player.controller_link}")
 
         await self.interaction_message(inter, txt=text, emoji="<:Play_With_Me:1128555926417330207>")
@@ -2927,8 +2931,10 @@ class Music(commands.Cog):
         text = [f"LOẠI BỎ {user.mention} khỏi danh sách DJ's.",
                 f"<:verify:1134033164151566460> **⠂{inter.author.mention} LOẠI BỎ {user.mention} khỏi danh sách DJ's.**"]
 
-        if (player.static and channel == player.text_channel) or isinstance(inter.application_command,
-                                                                            commands.InvokableApplicationCommand):
+        app_cmd = getattr(inter, "application_command", None)
+
+        if (player.static and channel == player.text_channel) or isinstance(app_cmd,
+                                             commands.InvokableApplicationCommand):
             await inter.send(f"{user.mention} Được thêm vào danh sách của DJ's!{player.controller_link}")
 
         await self.interaction_message(inter, txt=text, emoji="<:verify:1134033164151566460>")
