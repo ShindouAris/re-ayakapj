@@ -10,7 +10,6 @@ tinymongo
 dnspython>=2.6.1
 psutil
 aiofiles
-disnake-jishaku
 packaging
 tornado
 emoji

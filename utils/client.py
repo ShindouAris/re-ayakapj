@@ -351,16 +351,6 @@ class BotPool:
 
             bot.http.token = token
 
-            os.environ.update(
-                {
-                    "JISHAKU_HIDE": "true",
-                    "JISHAKU_NO_DM_TRACEBACK": "true",
-                    "JISHAKU_NO_UNDERSCORE": "true",
-                }
-            )
-
-            bot.load_extension("jishaku")
-
             if bot.config['INTERACTION_COMMAND_ONLY']:
 
                 @bot.check
