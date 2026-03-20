@@ -114,7 +114,7 @@ class WebSocket:
             self._node.available = False
 
             if isinstance(error, aiohttp.WSServerHandshakeError) and error.status == 401:
-                print(f'\nAuthorization Failed for Node:: {self._node}\n', file=sys.stderr)
+                __log__.warning(f'\nAuthorization Failed for Node:: {self._node}\n')
             else:
                 __log__.error(f'WEBSOCKET | Connection Failure:: {error}')
                 #traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
@@ -212,7 +212,7 @@ class WebSocket:
             except KeyError:
                 pass
         else:
-            __log__.warn(f"Unknown op: {op} | {data}")
+            __log__.warning(f"Unknown op: {op} | {data}")
 
     def _get_event_payload(self, name: str, data):
 
@@ -228,6 +228,9 @@ class WebSocket:
             return 'wavelink_track_stuck', TrackStuck(data)
         elif name == 'WebSocketClosedEvent':
             return 'wavelink_websocket_closed', WebsocketClosed(data)
+        else:
+            __log__.warning(f"Unknown event: {name}")
+            return None
 
     async def _send(self, **data):
         if self.is_connected:
