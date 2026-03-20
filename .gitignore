@@ -203,3 +203,4 @@ token.json
 tools/spotify/cache
 tools/cookie.txt
 /cache/.spotify
+uv.lock
