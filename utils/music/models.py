@@ -2041,6 +2041,19 @@ class LavalinkPlayer(wavelink.Player):
         except:
             pass
 
+        fallback_data = None
+        v2_mode = False
+        v2_send_flags = None
+        v2_components = data.pop("components_v2", None)
+
+        if self.bot.config.get("ENABLE_COMPONENTS_V2") and v2_components:
+            fallback_data = dict(data)
+            data = dict(data)
+            data["components"] = v2_components
+            data.pop("embeds", None)
+            v2_mode = True
+            v2_send_flags = disnake.MessageFlags(is_components_v2=True)
+
         if not self.controller_mode:
 
             if self.temp_embed:
@@ -2202,13 +2215,35 @@ class LavalinkPlayer(wavelink.Player):
                     else:
                         await interaction.response.edit_message(allowed_mentions=self.allowed_mentions,
                                                                 **data)
-                except:
+                except Exception as e:
+                    self.bot.log.warning(
+                        f"components v2 edit failed in guild {self.guild.id} ({self.guild.name}): {repr(e)}"
+                    )
+                    if fallback_data:
+                        try:
+                            if interaction.response.is_done():
+                                await interaction.message.edit(allowed_mentions=self.allowed_mentions, **fallback_data)
+                            else:
+                                await interaction.response.edit_message(
+                                    allowed_mentions=self.allowed_mentions,
+                                    **fallback_data,
+                                )
+                        except:
+                            traceback.print_exc()
                     traceback.print_exc()
                 self.updating = False
                 self.start_message_updater_task()
                 return
 
             else:
+
+                if v2_mode and self.message and not self.has_thread and not self.static:
+                    msg_flags = getattr(self.message, "flags", None)
+                    if not (msg_flags and getattr(msg_flags, "is_components_v2", False)):
+                        try:
+                            await self.destroy_message()
+                        except Exception:
+                            pass
 
                 if self.message and (
                         self.ignore_np_once or self.has_thread or self.static or not force or self.is_last_message()):
@@ -2224,8 +2259,19 @@ class LavalinkPlayer(wavelink.Player):
                         except asyncio.CancelledError:
                             pass
                             return
-                        except:
-                            pass
+                        except Exception as e:
+                            self.bot.log.warning(
+                                f"components edit failed in guild {self.guild.id} ({self.guild.name}): {repr(e)}"
+                            )
+                            if fallback_data:
+                                try:
+                                    await self.message.edit(allowed_mentions=self.allowed_mentions, **fallback_data)
+                                    await asyncio.sleep(0.5)
+                                    self.start_message_updater_task()
+                                    self.updating = False
+                                    return
+                                except:
+                                    pass
                             self.text_channel = self.bot.get_channel(self.text_channel.id)
 
                             if not self.text_channel:
@@ -2281,10 +2327,25 @@ class LavalinkPlayer(wavelink.Player):
 
             if not self.static:
                 try:
-                    self.message = await self.text_channel.send(allowed_mentions=self.allowed_mentions,
-                                                                **data)
-                except:
-                    pass
+                    send_data = dict(data)
+                    if v2_mode and v2_send_flags:
+                        send_data["flags"] = v2_send_flags
+                    self.message = await self.text_channel.send(
+                        allowed_mentions=self.allowed_mentions,
+                        **send_data,
+                    )
+                except Exception as e:
+                    self.bot.log.warning(
+                        f"components send failed in guild {self.guild.id} ({self.guild.name}): {repr(e)}"
+                    )
+                    if fallback_data:
+                        try:
+                            self.message = await self.text_channel.send(
+                                allowed_mentions=self.allowed_mentions,
+                                **fallback_data,
+                            )
+                        except:
+                            pass
 
             self.start_message_updater_task()
 

@@ -66,6 +66,7 @@ DEFAULT_CONFIG = {
     "QUEUE_MAX_ENTRIES": 0,
     "ENABLE_DEFER_TYPING": True,
     "DEFAULT_SEARCH_PROVIDER": "ytsearch",
+    "ENABLE_COMPONENTS_V2": True,
 
     ##############################################
     ### Sistema de música - Suporte ao spotify ###
@@ -215,6 +216,7 @@ def load_config():
         "PLAYER_SESSIONS_MONGODB",
         "SENSITIVE_INFO_WARN",
         "ENABLE_DEFER_TYPING",
+        "ENABLE_COMPONENTS_V2",
 
         "BANS_INTENT",
         "DM_MESSAGES_INTENT",
