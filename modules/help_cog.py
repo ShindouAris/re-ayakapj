@@ -33,7 +33,7 @@ class ViewHelp(disnake.ui.View):
 
         if interaction.user != self.ctx.author:
             await interaction.response.send_message(f"Chỉ thành viên {self.ctx.author.mention} mới có thể sử dụng các tùy chọn này.", ephemeral=True)
-            return
+            return False
 
         return True
 
@@ -144,6 +144,7 @@ async def check_perms(ctx: CustomContext, cmd: commands.Command):
 def check_cmd(cmd: commands.command):
     if hasattr(cmd, 'category') and cmd.category:
         return True
+    return None
 
 
 class HelpCog(commands.Cog, name="Hỗ trơ lệnh"):
@@ -321,7 +322,6 @@ class HelpCog(commands.Cog, name="Hỗ trơ lệnh"):
 
     async def parse_direct(self, ctx: CustomContext, cmd_name: list):
 
-        # TODO: corrigir modo recursivo de subcommands
         cmd: Union[commands.command, commands.Group] = None
         for cname in cmd_name:
             if cmd:
