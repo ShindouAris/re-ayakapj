@@ -34,3 +34,4 @@ websocket-client
 soundcloud-v2
 pytube
 RapidFuzz
+dave-py
