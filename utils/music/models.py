@@ -638,7 +638,7 @@ class LavalinkPlayer(wavelink.Player):
 
             self.bot.dispatch("wavelink_track_end", self.node, event)
 
-            if self.locked or self.auto_pause:
+            if self.locked:
                 return
 
             if event.reason == "FINISHED":
@@ -1151,7 +1151,14 @@ class LavalinkPlayer(wavelink.Player):
 
     async def members_timeout(self, check: bool, force: bool = False, idle_timeout = None):
 
+        update_log = False
+
         if self.auto_pause:
+
+            # Keep auto-pause state untouched when channel is still empty.
+            if not check:
+                return
+
             if self.current:
                 try:
                     await self.resolve_track(self.current)
@@ -1161,9 +1168,6 @@ class LavalinkPlayer(wavelink.Player):
                     traceback.print_exc()
             self.auto_pause = False
             update_log = True
-
-        else:
-            update_log = False
 
         if check:
 
@@ -1247,7 +1251,7 @@ class LavalinkPlayer(wavelink.Player):
             pass
 
         if self.locked:
-            return
+            return None
 
         tracks_search = []
 
@@ -1683,7 +1687,7 @@ class LavalinkPlayer(wavelink.Player):
         self.last_update = 0
         self.last_position = start_position
         self.position_timestamp = 0
-        self.paused = False
+        self.paused = False if not self.auto_pause else True
 
         self.process_hint()
 
@@ -1785,7 +1789,7 @@ class LavalinkPlayer(wavelink.Player):
 
         kwargs = {
             "embed": embed,
-            "content": None,
+            "content": "None",
             "components": components,
             "allowed_mentions": self.allowed_mentions
         }

@@ -6561,6 +6561,23 @@ class Music(commands.Cog):
         except KeyError:
             return
 
+        def schedule_members_timeout(check_state: bool):
+            now = disnake.utils.utcnow().timestamp()
+            last_check = getattr(player, "_last_members_timeout_check", None)
+            last_ts = getattr(player, "_last_members_timeout_ts", 0)
+
+            # Voice events can arrive in bursts; skip duplicate state spam.
+            if last_check is check_state and (now - last_ts) < 1.25:
+                return
+
+            task = getattr(player, "members_timeout_task", None)
+            if task and not task.done():
+                task.cancel()
+
+            player._last_members_timeout_check = check_state
+            player._last_members_timeout_ts = now
+            player.members_timeout_task = player.bot.loop.create_task(player.members_timeout(check=check_state))
+
         if member.bot:
           
             if player.bot.user.id == member.id and not after.channel and not player.is_closing:
@@ -6640,14 +6657,10 @@ class Music(commands.Cog):
                 pass
             else:
                 try:
-                    player.members_timeout_task.cancel()
-                except:
-                    pass
-                try:
                     check = (m for m in vc.members if not m.bot and not (m.voice.deaf or m.voice.self_deaf))
                 except:
                     check = None
-                player.members_timeout_task = player.bot.loop.create_task(player.members_timeout(check=bool(check)))
+                schedule_members_timeout(bool(check))
             return
 
         try:
@@ -6726,7 +6739,7 @@ class Music(commands.Cog):
                 pass
             player.auto_skip_track_task = None
 
-        player.members_timeout_task = player.bot.loop.create_task(player.members_timeout(check=bool(check)))
+        schedule_members_timeout(bool(check))
         
         if not member.guild.me.voice:
             await asyncio.sleep(1)
