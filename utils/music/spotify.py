@@ -35,8 +35,10 @@ async def process_spotify(bot: BotCore, requester: int, query: str):
                 raise GenericError("**Không có kết quả từ tìm kiếm của bạn...**")
             query = str(r.headers["location"])
 
-    if not (matches := spotify_regex.match(query)):
+    if not spotify_regex.match(query):
         return
+
+    raise GenericError("**Hỗ trợ Spotify đã bị tắt do thay đổi giới hạn API. Vui lòng sử dụng YouTube hoặc SoundCloud.**")
 
     if not bot.spotify:
         if [n for n in bot.music.nodes.values() if n.version > 3 and "spotify" in n.info["sourceManagers"]]:

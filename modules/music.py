@@ -1077,24 +1077,8 @@ class Music(commands.Cog):
 
                 query = user_data["integration_links"][query[7:]]
 
-                if (matches := spotify_regex_w_user.match(query)):
-
-                    if not self.bot.spotify:
-                        raise GenericError("**Hỗ trợ Spotify hiện không có sẵn...**")
-
-                    url_type, user_id = matches.groups()
-
-                    if url_type != "user":
-                        raise GenericError("**Liên kết không được hỗ trợ bằng phương pháp này...**")
-
-                    try:
-                        await inter.response.defer(ephemeral=True)
-                    except:
-                        pass
-
-                    result = await self.bot.loop.run_in_executor(None, lambda: self.bot.spotify.user_playlists(user_id))
-
-                    info = {"entries": [{"title": t["name"], "url": t["external_urls"]["spotify"]} for t in result["items"]]}
+                if spotify_regex_w_user.match(query):
+                    raise GenericError("**Hỗ trợ Spotify đã bị tắt do thay đổi giới hạn API. Vui lòng sử dụng YouTube hoặc SoundCloud.**")
 
                 elif not self.bot.config["USE_YTDL"]:
                     raise GenericError("**Không có hỗ trợ cho loại yêu cầu này vào lúc này...**")
@@ -1570,7 +1554,7 @@ class Music(commands.Cog):
                 )
             except KeyError:
                 embed.set_author(
-                    name="⠂ Spotify Playlist",
+                    name="⠂ Danh sách phát",
                     icon_url=music_source_image(tracks.tracks[0].info['sourceName'])
                 )
             embed.set_thumbnail(url=tracks.thumb)
@@ -5029,7 +5013,7 @@ class Music(commands.Cog):
                         disnake.ui.TextInput(
                             style=disnake.TextInputStyle.short,
                             label="Tên bài hát/liên kết.",
-                            placeholder="Tên hoặc link youtube/spotify/soundcloud, v.v.",
+                            placeholder="Tên hoặc link youtube/soundcloud, v.v.",
                             custom_id="song_input",
                             max_length=150,
                             required=True
@@ -6551,7 +6535,7 @@ class Music(commands.Cog):
                 embed.description = "**Cuộc trò chuyện này sẽ tạm thời được sử dụng để yêu cầu bài hát.**\n\n" \
                                      "**Yêu cầu bài hát của bạn tại đây bằng cách gửi tên bài hát hoặc liên kết bài hát/video" \
                                      "đó là từ một trong những nền tảng được hỗ trợ sau:** " \
-                                    "```ansi\n[31;1mYoutube[0m, [33;1mSoundcloud[0m, [32;1mSpotify[0m, [34;1mTwitch[0m```"
+                                    "```ansi\n[31;1mYoutube[0m, [33;1mSoundcloud[0m, [34;1mTwitch[0m```"
 
         await thread.send(embed=embed)
 

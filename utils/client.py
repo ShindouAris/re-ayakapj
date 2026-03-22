@@ -32,7 +32,6 @@ from utils.music.checks import check_pool_bots
 from utils.music.errors import GenericError
 from utils.music.local_lavalink import run_lavalink
 from utils.music.models import music_mode, LavalinkPlayer
-from utils.music.spotify import spotify_client
 from utils.others import CustomContext, token_regex, sort_dict_recursively
 from utils.owner_panel import PanelView
 from web_app import WSClient, start
@@ -287,7 +286,8 @@ class BotPool:
 
         self.ws_client = WSClient(self.config["RPC_SERVER"], pool=self)
 
-        self.spotify: Optional[spotipy.Spotify] = spotify_client(self.config)
+        self.spotify: Optional[spotipy.Spotify] = None
+        self.log.warning("Spotify support is disabled by bot policy (API premium restriction).")
 
         all_tokens = {}
 

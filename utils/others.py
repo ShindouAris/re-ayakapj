@@ -403,7 +403,7 @@ async def send_idle_embed(
                                       ("trong bài đăng" if is_forum else "trong kênh hoặc trong cuộc trò chuyện bên dưới") +
                                       f" (hoặc nhấp vào nút bên dưới hoặc sử dụng lệnh {cmd} tại đây hoặc trên kênh khác)**\n\n"
                                       "**Bạn có thể sử dụng tên hoặc liên kết trang web được hỗ trợ:**"
-                                      " ```ansi\n[31;1mYoutube[0m, [33;1mSoundcloud[0m, [32;1mSpotify[0m, [34;1mTwitch[0m```\n",
+                                      " ```ansi\n[31;1mYoutube[0m, [33;1mSoundcloud[0m, [34;1mTwitch[0m```\n",
                           color=bot.get_color(target.guild.me))
 
     if text:

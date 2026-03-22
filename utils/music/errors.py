@@ -138,7 +138,7 @@ def parse_error(
                     f"[] = Bắt buộc | <> = Không bắt buộc```\n"
 
     elif isinstance(error, MissingSpotifyClient):
-        error_txt = "**Liên kết Spotify không được hỗ trợ tại thời điểm này.**"
+        error_txt = "**Hỗ trợ Spotify đã bị tắt do thay đổi giới hạn API. Vui lòng sử dụng YouTube hoặc SoundCloud.**"
 
     elif isinstance(error, commands.NoPrivateMessage):
         error_txt = "Lệnh này không thể chạy trên tin nhắn riêng tư."

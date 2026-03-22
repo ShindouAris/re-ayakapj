@@ -842,56 +842,14 @@ class FavModalAdd(disnake.ui.Modal):
                 )
                 return
 
-            if (matches := spotify_regex_w_user.match(url)):
-
-                if not self.view.bot.spotify:
-                    await inter.send(
-                        embed=disnake.Embed(
-                            description="**Hỗ trợ Spotify hiện không có sẵn...**",
-                            color=disnake.Color.red()
-                        ), ephemeral=True
-                    )
-                    return
-
-                url_type, user_id = matches.groups()
-
-                if url_type != "user":
-                    await inter.send(
-                        embed=disnake.Embed(
-                            description=f"**Bạn phải sử dụng liên kết hồ sơ người dùng Spotify.** {url}",
-                            color=disnake.Color.red()
-                        ), ephemeral=True
-                    )
-                    return
-
-                try:
-                    await inter.response.defer(ephemeral=True)
-                except:
-                    pass
-
-                try:
-                    result = await self.view.bot.loop.run_in_executor(None, lambda: self.view.bot.spotify.user(user_id))
-                except Exception as e:
-                    await inter.send(
-                        embed=disnake.Embed(
-                            description="**Đã xảy ra lỗi khi lấy thông tin từ Spotify:** ```py\n"
-                                        f"{repr(e)}```",
-                            color=self.view.bot.get_color()
-                        )
-                    )
-                    traceback.print_exc()
-                    return
-
-                if not result:
-                    await inter.send(
-                        embed=disnake.Embed(
-                            description="**Người dùng liên kết được cung cấp không có danh sách phát công khai...**",
-                            color=self.view.bot.get_color()
-                        )
-                    )
-                    return
-
-                data = {"title": f"[SP]: {result['display_name'][:90]}", "url": result["external_urls"]["spotify"]}
+            if spotify_regex_w_user.match(url):
+                await inter.send(
+                    embed=disnake.Embed(
+                        description="**Hỗ trợ Spotify đã bị tắt do thay đổi giới hạn API. Vui lòng sử dụng YouTube hoặc SoundCloud.**",
+                        color=disnake.Color.red()
+                    ), ephemeral=True
+                )
+                return
 
             else:
 
@@ -1769,7 +1727,7 @@ class SetStageTitle(disnake.ui.View):
                "[34;1m{track.author}[0m -> Tên của nghệ sĩ/người tải lên/tác giả của bài hát.\n" \
                "[34;1m{track.duration}[0m -> Thời lượng âm nhạc.\n" \
                "[34;1m{track.timestamp}[0m -> Thời gian đếm âm nhạc hồi quy (chỉ kênh giọng nói).\n" \
-               "[34;1m{track.source}[0m -> Nguồn gốc/nguồn âm nhạc (YouTube/Spotify/SoundCloud, v.v.)\n" \
+               "[34;1m{track.source}[0m -> Nguồn gốc/nguồn âm nhạc (YouTube/SoundCloud, v.v.)\n" \
                "[34;1m{track.emoji}[0m -> Biểu tượng cảm xúc phông chữ âm nhạc (chỉ trong kênh giọng nói).\n" \
                "[34;1m{track.playlist}[0m -> Tên của danh sách phát nguồn âm nhạc (nếu bạn có)\n" \
                "[34;1m{requester.name}[0m -> Tên/Nick của thành viên đã đặt hàng âm nhạc\n" \

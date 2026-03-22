@@ -203,6 +203,15 @@ class PlayerSession(commands.Cog):
 
             if info["sourceName"] == "spotify":
 
+                if not self.bot.spotify and not info.get("search_uri"):
+                    extra = info.get("extra") or {}
+                    authors = ", ".join(extra.get("authors") or []).strip()
+                    title = info.get("title", "").strip()
+                    author = info.get("author", "").strip()
+                    fallback_query = f"{title} - {authors or author}".strip(" -")
+                    if fallback_query:
+                        info["search_uri"] = f"ytsearch:{fallback_query}"
+
                 if playlist := info.pop("playlist", None):
 
                     try:
