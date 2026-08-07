@@ -6,6 +6,7 @@ requests
 humanize
 motor
 tinymongo
+tinydb-serialization
 psutil
 aiofiles
 packaging

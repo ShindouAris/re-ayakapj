@@ -26,6 +26,7 @@ dependencies = [
     "requests>=2.34.2",
     "soundcloud-v2>=1.7.0",
     "spotipy>=2.26.0",
+    "tinydb-serialization>=1.0.4",
     "tinymongo>=0.2.0",
     "tornado>=6.5.8",
     "user-agent>=0.1.14",
