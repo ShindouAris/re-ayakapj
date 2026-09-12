@@ -24,10 +24,19 @@ class ComponentV2(disnake.ui.UIComponent):
         queue_text: str,
         controls: list,
     ) -> disnake.ui.Container:
+        section_kwargs = {}
+        thumb = getattr(player.current, "thumb", None) if player.current else None
+        if not (thumb and isinstance(thumb, str) and thumb.startswith(("http://", "https://"))):
+            source_name = getattr(player.current, "info", {}).get("sourceName") if player.current else None
+            thumb = music_source_image(source_name)
+
+        if thumb and isinstance(thumb, str) and thumb.startswith(("http://", "https://")):
+            section_kwargs["accessory"] = disnake.ui.Thumbnail(media=thumb)
+
         children = [
             disnake.ui.Section(
                 disnake.ui.TextDisplay(content=header_text),
-                accessory=disnake.ui.Thumbnail(media=player.current.thumb),
+                **section_kwargs,
             ),
             disnake.ui.Separator(divider=True, spacing=disnake.SeparatorSpacing.small),
             disnake.ui.TextDisplay(content=body_text),
