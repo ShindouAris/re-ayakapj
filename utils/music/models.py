@@ -529,6 +529,10 @@ class LavalinkPlayer(wavelink.Player):
                f"node=\"{self.node.identifier}\" keep_connected=\"{self.keep_connected}\">"
 
     @property
+    def queue_updater_task(self) -> Optional[asyncio.Task]:
+        return self._queue_updater_task
+
+    @property
     def has_thread(self):
         try:
             if isinstance(self.message.channel.parent, disnake.ForumChannel):
@@ -2904,9 +2908,6 @@ class LavalinkPlayer(wavelink.Player):
         if self._session_resuming:
             await asyncio.sleep(10)
             self._session_resuming = False
-            return
-
-        if self._queue_updater_task and self.bot.config["PLAYER_SESSIONS_DATABASE"]:
             return
 
         cog = self.bot.get_cog("PlayerSession")

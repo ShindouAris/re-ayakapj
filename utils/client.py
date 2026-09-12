@@ -685,6 +685,17 @@ class BotCore(commands.AutoShardedBot):
 
     async def close(self) -> None:
         self.log.info("Cleaning up...")
+        try:
+            cog = self.get_cog("PlayerSession")
+            if cog:
+                for player in list(self.music.players.values()):
+                    try:
+                        await cog.save_info(player)
+                    except Exception as e:
+                        self.log.warning(f"Error saving session for guild {player.guild.id}: {e}")
+        except Exception as e:
+            self.log.warning(f"Error saving player sessions on shutdown: {e}")
+
         if os.path.exists("data_tts"):
             for item in os.listdir("data_tts"):
                 item_path = os.path.join("data_tts", item)

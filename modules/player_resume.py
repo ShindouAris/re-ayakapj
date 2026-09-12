@@ -147,6 +147,8 @@ class PlayerSession(commands.Cog):
             "version": getattr(player, "version", 1),
             "volume": player.volume,
             "nightcore": player.nightcore,
+            "filter3d": getattr(player, "filter3d", False),
+            "slowmo": getattr(player, "slowmo", False),
             "position": player.position,
             "voice_channel": vc_id,
             "dj": player.dj,
@@ -293,16 +295,15 @@ class PlayerSession(commands.Cog):
                     data_list[d["_id"]] = d
 
             else:
-                for d in mongo_sessions:
+                for d in db_sessions:
                     data_list[d["_id"]] = d
-                    self.bot.log.info(f"{self.bot.user} - Moving server session data: {d['_id']} | Mongodb Local")
+                    self.bot.log.info(f"{self.bot.user} - Moving server session data: {d['_id']} | PostgreSQL -> LocalDB")
                     await self.save_session_local(d["_id"], d)
-                    if self.bot.config["MONGO"]:
-                        await self.delete_data_mongo(d["_id"])
+                    await self.delete_data_database(d["_id"])
                 for d in local_sessions:
                     data_list[d["_id"]] = d
 
-            mongo_sessions.clear()
+            db_sessions.clear()
             local_sessions.clear()
 
             hints = self.bot.config["EXTRA_HINTS"].split("||")
@@ -316,7 +317,7 @@ class PlayerSession(commands.Cog):
                     await asyncio.sleep(1)
 
         except Exception:
-            self.bot.log.warning(f"{self.bot.user} - Cannot resume playback {data['_id']}:\n{traceback.format_exc()}")
+            self.bot.log.warning(f"{self.bot.user} - Cannot resume playback:\n{traceback.format_exc()}")
 
         self.bot.player_resumed = True
 
@@ -326,33 +327,42 @@ class PlayerSession(commands.Cog):
             hints = []
 
         try:
-            guild = self.bot.get_guild(data["_id"])
+            guild_id = int(data["_id"])
+            guild = self.bot.get_guild(guild_id)
 
-            if self.bot.music.players.get(int(data["_id"])):
-                    self.bot.log.warning(f"{self.bot.user} - Ignore existing players: {data['_id']}")
+            if self.bot.music.players.get(guild_id):
+                    self.bot.log.warning(f"{self.bot.user} - Ignore existing players: {guild_id}")
                     return
 
             if not guild:
-                    self.bot.log.warning(f"{self.bot.user} - The player is ignored: {data['_id']} | Server does not exist...")
+                    self.bot.log.warning(f"{self.bot.user} - The player is ignored: {guild_id} | Server does not exist...")
                     if (disnake.utils.utcnow() - data.get("time", disnake.utils.utcnow())).total_seconds() > 172800:
-                        await self.delete_data(data["_id"])
+                        await self.delete_data(guild_id)
                     return
 
             message = None
 
-            if not data["text_channel_id"]:
+            if not data.get("text_channel_id"):
                 text_channel = None
             elif not isinstance(data["text_channel_id"], disnake.Thread):
-                text_channel = self.bot.get_channel(data["text_channel_id"])
+                try:
+                    text_channel = self.bot.get_channel(int(data["text_channel_id"])) or \
+                                   await self.bot.fetch_channel(int(data["text_channel_id"]))
+                except (disnake.NotFound, disnake.Forbidden, disnake.HTTPException, TypeError, ValueError):
+                    text_channel = None
             else:
                 try:
                     text_channel = self.bot.get_channel(int(data["text_channel_id"])) or \
-                               await self.bot.fetch_channel(int(data["text_channel_id"]))
-                except (disnake.NotFound, TypeError):
+                                   await self.bot.fetch_channel(int(data["text_channel_id"]))
+                except (disnake.NotFound, TypeError, ValueError):
                     text_channel = None
                     data["message_id"] = None
 
-            voice_channel = self.bot.get_channel(data["voice_channel"])
+            try:
+                voice_channel = self.bot.get_channel(int(data["voice_channel"])) or \
+                                await self.bot.fetch_channel(int(data["voice_channel"]))
+            except (disnake.NotFound, disnake.Forbidden, disnake.HTTPException, TypeError, ValueError):
+                voice_channel = None
 
             if not text_channel:
                 data['static'] = False
@@ -395,7 +405,7 @@ class PlayerSession(commands.Cog):
 
                 except Exception as e:
                         self.bot.log.error(f"{self.bot.user} - Failed to get message: {repr(e)}\n"
-                              f"channel_id: {text_channel.id} | message_id {data['message']}")
+                              f"channel_id: {text_channel.id} | message_id {data.get('message_id')}")
 
             if not voice_channel:
                     self.bot.log.warning(f"{self.bot.user} - The player is ignored: {guild.name} [{guild.id}]\nVoice channel does not exist...")
@@ -493,17 +503,19 @@ class PlayerSession(commands.Cog):
 
             player.listen_along_invite = data.pop("listen_along_invite", "")
 
-            player.dj = set(data["dj"])
-            player.loop = data["loop"]
+            player.dj = set(data.get("dj", []))
+            player.loop = data.get("loop", False)
 
-            player.nightcore = data.get("nightcore")
+            player.nightcore = data.get("nightcore", False)
 
             if player.nightcore:
                 await player.set_timescale(pitch=1.2, speed=1.1)
 
+            player.filter3d = data.get("filter3d", False)
             if player.filter3d:
                 await player.set_rotation(sample_rate=0.2)
                 
+            player.slowmo = data.get("slowmo", False)
             if player.slowmo:
                 await player.set_timescale(speed=0.75, pitch=1.0, rate=0.8)
 
@@ -610,18 +622,31 @@ class PlayerSession(commands.Cog):
 
     async def get_player_sessions_database(self):
         guild_data = []
-        for d in (await self.bot.pool.database.query_data(db_name=str(self.bot.user.id), collection="player_sessions")):
+        try:
+            sessions = await self.bot.pool.database.query_data(
+                db_name=str(self.bot.user.id), collection="player_sessions"
+            )
+        except Exception as e:
+            self.bot.log.error(f"{self.bot.user} - Error querying player sessions from DB: {e}")
+            return guild_data
+
+        for d in sessions:
             try:
                 data = d["data"]
             except KeyError:
                 await self.delete_data(int(d["_id"]))
                 continue
-            data = b64decode(data)
             try:
-                data = zlib.decompress(data)
-            except zlib.error:
-                pass
-            guild_data.append(pickle.loads(data))
+                raw_data = b64decode(data)
+                try:
+                    raw_data = zlib.decompress(raw_data)
+                except zlib.error:
+                    pass
+                guild_data.append(pickle.loads(raw_data))
+            except Exception as e:
+                self.bot.log.warning(f"Error loading session data for guild {d.get('_id')}: {e}")
+                await self.delete_data(int(d["_id"]))
+                continue
 
         return guild_data
 
@@ -643,13 +668,16 @@ class PlayerSession(commands.Cog):
 
             guild_id = file_content[:-4]
 
-            async with aiofiles.open(f'./local_database/player_sessions/{self.bot.user.id}/{guild_id}.pkl', 'rb') as f:
-                file_content = await f.read()
-                try:
-                    file_content = zlib.decompress(file_content)
-                except zlib.error:
-                    pass
-                data = pickle.loads(file_content)
+            try:
+                async with aiofiles.open(f'./local_database/player_sessions/{self.bot.user.id}/{guild_id}.pkl', 'rb') as f:
+                    file_content = await f.read()
+                    try:
+                        file_content = zlib.decompress(file_content)
+                    except zlib.error:
+                        pass
+                    data = pickle.loads(file_content)
+            except Exception:
+                data = None
 
             if data:
                 guild_data.append(data)
@@ -697,7 +725,8 @@ class PlayerSession(commands.Cog):
             player = player.bot.music.players[player.guild.id]
         except:
             try:
-                player.queue_updater_task.cancel()
+                if player.queue_updater_task:
+                    player.queue_updater_task.cancel()
             except:
                 pass
             return
@@ -710,6 +739,8 @@ class PlayerSession(commands.Cog):
 
         except asyncio.CancelledError as e:
             print(f"❌ - {self.bot.user} - Save cancelled: {repr(e)}")
+        except Exception as e:
+            self.bot.log.warning(f"❌ - {self.bot.user} - Error saving player session for guild {player.guild.id}: {e}")
 
     async def delete_data_database(self, id_: Union[LavalinkPlayer, int]):
         await self.bot.pool.database.delete_data(id_=str(id_), db_name=str(self.bot.user.id),
