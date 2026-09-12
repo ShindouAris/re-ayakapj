@@ -26,9 +26,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      lavalink:
-        condition: service_healthy
-
+  
 volumes:
   postgres_data:
 
