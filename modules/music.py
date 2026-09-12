@@ -244,6 +244,35 @@ class Music(commands.Cog):
             server=server
         )
 
+    def get_user_voice_channel(self, inter: Union[disnake.AppCmdInter, disnake.MessageInteraction, disnake.ModalInteraction, CustomContext]) -> Optional[Union[disnake.VoiceChannel, disnake.StageChannel]]:
+        user = getattr(inter, "author", None) or getattr(inter, "user", None)
+        if user and getattr(user, "voice", None) and user.voice.channel:
+            return user.voice.channel
+
+        guild_id = getattr(inter, "guild_id", None) or (inter.guild.id if getattr(inter, "guild", None) else None)
+        user_id = user.id if user else None
+
+        if guild_id and user_id:
+            guild = getattr(inter, "guild", None)
+            if guild and hasattr(guild, "_voice_states") and user_id in guild._voice_states:
+                vs = guild._voice_states[user_id]
+                if vs.channel_id:
+                    vc = guild.get_channel(vs.channel_id)
+                    if vc:
+                        return vc
+
+            if hasattr(self.bot, "pool") and hasattr(self.bot.pool, "bots"):
+                for b in self.bot.pool.bots:
+                    bg = b.get_guild(guild_id)
+                    if bg and hasattr(bg, "_voice_states") and user_id in bg._voice_states:
+                        vs = bg._voice_states[user_id]
+                        if vs.channel_id:
+                            vc = bg.get_channel(vs.channel_id) or b.get_channel(vs.channel_id)
+                            if vc:
+                                return vc
+
+        return None
+
     @search.autocomplete("search")
     async def search_autocomplete(self, inter: disnake.Interaction, current: str):
 
@@ -608,7 +637,9 @@ class Music(commands.Cog):
             ephemeral = await self.is_request_channel(inter, data=guild_data, ignore_thread=True)
             await inter.response.defer(ephemeral=ephemeral)
 
-        if not inter.author.voice:
+        user_vc = self.get_user_voice_channel(inter)
+
+        if not user_vc:
 
             if not (c for c in guild.channels if c.permissions_for(inter.author).connect):
                 raise GenericError(f"**Bạn chưa được kết nối với kênh thoại và không có kênh/giai đoạn thoại nào"
@@ -714,8 +745,12 @@ class Music(commands.Cog):
 
         can_send_message(channel, bot.user)
 
-        if not guild.voice_client and not check_channel_limit(guild.me, inter.author.voice.channel):
-            raise GenericError(f"**Kênh {inter.author.voice.channel.mention} đã đầy!**")
+        user_vc = user_vc or self.get_user_voice_channel(inter)
+        if not user_vc:
+            raise NoVoice()
+
+        if not guild.voice_client and not check_channel_limit(guild.me, user_vc):
+            raise GenericError(f"**Kênh {user_vc.mention} đã đầy!**")
 
         await self.check_player_queue(inter.author, bot, guild.id)
 
@@ -739,10 +774,7 @@ class Music(commands.Cog):
 
         attachment: Optional[disnake.Attachment] = None
 
-        try:
-            voice_channel = bot.get_channel(inter.author.voice.channel.id)
-        except AttributeError:
-            raise NoVoice()
+        voice_channel = bot.get_channel(user_vc.id) or user_vc
 
         try:
             player = bot.music.players[guild.id]
@@ -4744,7 +4776,7 @@ class Music(commands.Cog):
                         if c := b.get_channel(interaction.channel_id):
                             bot = b
                             channel = c
-                            author = c.guild.get_member(interaction.author.id)
+                            author = c.guild.get_member(interaction.author.id) or interaction.author
                         continue
 
                     if p.guild.me.voice and interaction.author.id in p.guild.me.voice.channel.voice_states:
@@ -4757,18 +4789,19 @@ class Music(commands.Cog):
                         player = p
                         bot = b
                         channel = player.text_channel
-                        author = channel.guild.get_member(interaction.author.id)
+                        author = channel.guild.get_member(interaction.author.id) or interaction.author
                         break
 
                 if not channel:
-                    raise GenericError("Không có bot nào vào thời điểm này.")
+                    channel = interaction.channel
+                if not bot:
+                    bot = getattr(interaction, "bot", self.bot)
+                if not author:
+                    author = interaction.author
 
-                try:
-                    if not author.voice:
-                        raise GenericError("Bạn phải tham gia một kênh thoại để sử dụng nút này....")
-                except AttributeError:
+                voice_channel = self.get_user_voice_channel(interaction)
+                if not voice_channel:
                     raise GenericError("Bạn phải tham gia một kênh thoại để sử dụng nút này....")
-                    pass
 
                 try:
                     node = player.node
@@ -4780,12 +4813,12 @@ class Music(commands.Cog):
                 except AttributeError:
                     pass
 
-                if PlayerControls.embed_forceplay:
+                if control == PlayerControls.embed_forceplay:
                     await check_player_perm(inter=interaction, bot=bot, channel=channel)
 
-                vc_id: int = author.voice.channel.id
+                vc_id: int = voice_channel.id
 
-                can_connect(channel=author.voice.channel, guild=channel.guild)
+                can_connect(channel=voice_channel, guild=channel.guild if channel else interaction.guild)
 
                 if control == PlayerControls.embed_enqueue_playlist:
 
@@ -5007,7 +5040,7 @@ class Music(commands.Cog):
 
             if control == PlayerControls.add_song:
 
-                if not interaction.user.voice:
+                if not self.get_user_voice_channel(interaction):
                     raise GenericError("**Bạn phải tham gia một kênh thoại để sử dụng nút này.**")
 
                 await interaction.response.send_modal(
@@ -5037,7 +5070,7 @@ class Music(commands.Cog):
 
             if control == PlayerControls.enqueue_fav:
 
-                if not interaction.user.voice:
+                if not self.get_user_voice_channel(interaction):
                     raise GenericError("**Bạn phải tham gia một kênh thoại để sử dụng nút này.**")
 
                 cmd_kwargs = {
@@ -5093,7 +5126,8 @@ class Music(commands.Cog):
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
 
-                if not interaction.author.voice or interaction.author.voice.channel != vc:
+                user_vc = self.get_user_voice_channel(interaction)
+                if not user_vc or user_vc != vc:
                     raise GenericError(f"Bạn phải ở trên kênh <#{vc.id}> để sử dụng các nút trình phát.")
 
                 if control == PlayerControls.miniqueue:
