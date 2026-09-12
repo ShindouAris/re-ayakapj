@@ -6,7 +6,7 @@ from typing import Union, Optional
 import disnake
 from disnake.ext import commands
 from disnake.utils import escape_mentions
-from pymongo.errors import ServerSelectionTimeoutError
+from sqlalchemy.exc import SQLAlchemyError
 
 from utils.music.converters import time_format, perms_translations
 from wavelink import WavelinkException, TrackNotFound, MissingSessionID
@@ -190,9 +190,8 @@ def parse_error(
     elif isinstance(error, TrackNotFound):
         error_txt = "**Không có kết quả cho tìm kiếm của bạn...**"
 
-    if isinstance(error, ServerSelectionTimeoutError) and os.environ.get("REPL_SLUG"):
-        error_txt = "Đã phát hiện lỗi dns trong repl.it khiến tôi không thể kết nối với cơ sở dữ liệu của mình" \
-                     "từ mongo/atlas. Tôi sẽ khởi động lại và sẽ sớm hoạt động trở lại..."
+    if isinstance(error, SQLAlchemyError):
+        error_txt = "**Đã xảy ra lỗi cơ sở dữ liệu, tôi đang thực hiện việc khởi động lại hệ thống của mình...**"
         kill_process = True
 
     elif isinstance(error, WavelinkException):
