@@ -21,7 +21,7 @@ logging = lg.getLogger(__name__)
 
 class Spotify_Worker:
     def __init__(self):
-        SpotifyClient.init(client_id=os.environ.get('SPOTIFY_CLIENT_ID'), client_secret=os.environ.get('SPOTIFY_CLIENT_SECRET'))
+        # SpotifyClient.init(client_id=os.environ.get('SPOTIFY_CLIENT_ID'), client_secret=os.environ.get('SPOTIFY_CLIENT_SECRET'))
         self.client = SpotifyClient()
         self.youtube_client = YouTube()
         self.soundcloud_client = SoundCloud()
