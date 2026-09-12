@@ -3023,6 +3023,9 @@ class Music(commands.Cog):
     )
     async def save_queue(self, inter: disnake.AppCmdInter):
 
+        if not inter.response.is_done():
+            await inter.response.defer(ephemeral=True)
+
         try:
             bot = inter.music_bot
             guild = inter.music_guild
@@ -4968,16 +4971,18 @@ class Music(commands.Cog):
             if self.bot.config["MAX_USER_FAVS"] > 0 and not (await self.bot.is_owner(interaction.author)):
 
                 if (current_favs_size := len(user_data["fav_links"])) > self.bot.config["MAX_USER_FAVS"]:
-                    await interaction.edit_original_message(f"Số lượng mục trong tệp yêu thích của bạn vượt quá "
-                                                             f"số lượng tối đa cho phép ({self.bot.config['MAX_USER_FAVS']}).")
+                    await interaction.send(f"Số lượng mục trong tệp yêu thích của bạn vượt quá "
+                                           f"số lượng tối đa cho phép ({self.bot.config['MAX_USER_FAVS']}).",
+                                           ephemeral=True)
                     return
 
                 if (current_favs_size + (user_favs := len(user_data["fav_links"]))) > self.bot.config["MAX_USER_FAVS"]:
-                    await interaction.edit_original_message(
+                    await interaction.send(
                         "Bạn không có đủ dung lượng để thêm tất cả dấu trang vào tệp của mình...\n"
                          f"Giới hạn hiện tại: {self.bot.config['MAX_USER_FAVS']}\n"
                          f"Số mục yêu thích đã lưu: {user_favs}\n"
-                         f"Bạn có: {(current_favs_size + user_favs) - self.bot.config['MAX_USER_FAVS']}")
+                         f"Bạn có: {(current_favs_size + user_favs) - self.bot.config['MAX_USER_FAVS']}",
+                        ephemeral=True)
                     return
 
             fav_name = embed.author.name[1:]
@@ -5206,6 +5211,8 @@ class Music(commands.Cog):
                         )
                         return
 
+                    select_interaction = None
+
                     if len(choices) == 1:
                         select_type, info = list(choices.items())[0]
 
@@ -5232,30 +5239,43 @@ class Music(commands.Cog):
                                 await self.player_interaction_concurrency.release(interaction)
                             except:
                                 pass
-                            await interaction.edit_original_message(
-                                embed=disnake.Embed(
-                                    color=self.bot.get_color(interaction.guild.me),
-                                    description="### Hoạt động bị hủy bỏ!"
-                                ), view=None
+                            cancel_embed = disnake.Embed(
+                                color=self.bot.get_color(interaction.guild.me),
+                                description="### Hoạt động bị hủy bỏ!"
                             )
+                            if select_interaction and not select_interaction.response.is_done():
+                                await select_interaction.response.edit_message(embed=cancel_embed, view=None)
+                            else:
+                                await interaction.edit_original_message(embed=cancel_embed, view=None)
                             return
-
-                        interaction = select_interaction
 
                         select_type = view.selected
                         info = choices[select_type]
+
+                    async def send_fav_response(emb: disnake.Embed):
+                        if select_interaction:
+                            if not select_interaction.response.is_done():
+                                await select_interaction.response.edit_message(embed=emb, view=None)
+                            else:
+                                await select_interaction.edit_original_response(embed=emb, view=None)
+                        else:
+                            if not interaction.response.is_done():
+                                await interaction.send(embed=emb, ephemeral=True)
+                            else:
+                                await interaction.edit_original_response(embed=emb, view=None)
 
                     user_data = await self.bot.get_global_data(interaction.author.id, db_name=DBModel.users)
 
                     if self.bot.config["MAX_USER_FAVS"] > 0 and not (await self.bot.is_owner(interaction.author)):
 
                         if len(user_data["fav_links"]) >= self.bot.config["MAX_USER_FAVS"]:
-                            await interaction.edit_original_message(
-                                embed=disnake.Embed(
+                            await send_fav_response(
+                                disnake.Embed(
                                     color=self.bot.get_color(interaction.guild.me),
                                     description="Bạn không có đủ dung lượng để thêm tất cả dấu trang vào tệp của mình...\n"
                                                  f"Giới hạn hiện tại: {self.bot.config['MAX_USER_FAVS']}"
-                                ), view=None)
+                                )
+                            )
                             return
 
                     user_data["fav_links"][fix_characters(info["name"], self.bot.config["USER_FAV_MAX_URL_LENGTH"])] = info["url"]
@@ -5271,8 +5291,8 @@ class Music(commands.Cog):
                     except AttributeError:
                         slashcmd = "/play"
 
-                    await interaction.edit_original_response(
-                        embed=disnake.Embed(
+                    await send_fav_response(
+                        disnake.Embed(
                             color=self.bot.get_color(interaction.guild.me),
                             description="### Mục đã được thêm/chỉnh sửa thành công vào mục yêu thích của bạn:\n\n"
                                          f"**{select_type}:** [`{info['name']}`]({info['url']})\n\n"
@@ -5280,7 +5300,7 @@ class Music(commands.Cog):
                                          f"* Sử dụng lệnh {slashcmd} (khi hoàn tất tìm kiếm tự động)\n"
                                          f"* Nhấp vào nút phát/chọn/tích hợp trình phát yêu thích.\n"
                                          f"* Sử dụng lệnh {global_data['prefix'] or self.bot.default_prefix}{self.play_legacy.name} mà không bao gồm tên hoặc liên kết tới bài hát/video."
-                        ), view=None
+                        )
                     )
 
                     try:
