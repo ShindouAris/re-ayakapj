@@ -392,7 +392,7 @@ class Music(commands.Cog):
                     break
 
                 await asyncio.sleep(1)
-                retries += 0
+                retries += 1
 
             if not await check_deafen(me):
                 await text_channel.send(
@@ -4318,8 +4318,9 @@ class Music(commands.Cog):
                     if player.queue:
                         txt += f"> <:musicalbum:1183394320292790332> **⠂Các bài hát trong hàng đợi** {len(player.queue)}\n"
 
+                    listeners_count = len([uid for uid in vc.voice_states if uid != player.bot.user.id and (not (m := vc.guild.get_member(uid)) or not m.bot)]) if getattr(vc, "voice_states", None) else len([m for m in vc.members if not m.bot])
                     txt += f"> 🔊 **⠂{'Kênh thoại' if isinstance(vc, disnake.VoiceChannel) else 'Sân khấu'}:** {vc_name}\n"\
-                           f"> 🎧 **⠂Người nghe hiện tại:** `{len([m for m in vc.members if not m.bot and (not m.voice.self_deaf or not m.voice.deaf)])}`\n"\
+                           f"> 🎧 **⠂Người nghe hiện tại:** `{listeners_count}`\n"\
                            f"> <:timeout:1155781760571949118> **⠂Hoạt động kể từ:** <t:{player.uptime}:f> - <t:{player.uptime}:R>\n"
 
                     embed = disnake.Embed(description=txt, color=self.bot.get_color(player.guild.me),)
@@ -6643,17 +6644,25 @@ class Music(commands.Cog):
                         await asyncio.sleep(30)
             return
 
+        try:
+            bot_vc = player.guild.me.voice.channel
+        except AttributeError:
+            bot_vc = player.last_channel
+
+        involved_channel_ids = set()
+        if before.channel:
+            involved_channel_ids.add(before.channel.id)
+        if after.channel:
+            involved_channel_ids.add(after.channel.id)
+
+        # Ignore voice updates that do not involve the player's voice channel or the bot itself
+        if bot_vc and bot_vc.id not in involved_channel_ids and member.id != player.bot.user.id:
+            return
+
         if before.channel == after.channel:
-            try:
-                vc = player.guild.me.voice.channel
-            except AttributeError:
-                pass
-            else:
-                try:
-                    check = (m for m in vc.members if not m.bot and not (m.voice.deaf or m.voice.self_deaf))
-                except:
-                    check = None
-                schedule_members_timeout(bool(check))
+            if bot_vc:
+                check = await player.has_active_members(bot_vc)
+                schedule_members_timeout(check)
             return
 
         try:
@@ -6692,9 +6701,11 @@ class Music(commands.Cog):
                 player.last_channel = after.channel
 
         try:
-            check = [m for m in player.guild.me.voice.channel.members if not m.bot and not (m.voice.deaf or m.voice.self_deaf)]
-        except:
-            check = None
+            vc = player.guild.me.voice.channel
+        except AttributeError:
+            vc = player.last_channel
+
+        check = await player.has_active_members(vc) if vc else False
 
         if player.stage_title_event and member.bot and not player.is_closing:
 
@@ -6724,7 +6735,6 @@ class Music(commands.Cog):
                 except Exception:
                     traceback.print_exc()
 
-
         if check:
             try:
                 player.auto_skip_track_task.cancel()
@@ -6732,7 +6742,7 @@ class Music(commands.Cog):
                 pass
             player.auto_skip_track_task = None
 
-        schedule_members_timeout(bool(check))
+        schedule_members_timeout(check)
         
         if not member.guild.me.voice:
             await asyncio.sleep(1)

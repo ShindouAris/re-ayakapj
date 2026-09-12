@@ -1152,6 +1152,64 @@ class LavalinkPlayer(wavelink.Player):
         elif self.skin_static not in self.bot.player_static_skins:
             self.skin_static = self.bot.default_static_skin
 
+    async def has_active_members(self, vc: Optional[Union[disnake.VoiceChannel, disnake.StageChannel]] = None) -> bool:
+        if not vc:
+            try:
+                vc = self.guild.me.voice.channel
+            except AttributeError:
+                vc = self.last_channel
+
+        if not vc:
+            return False
+
+        bot_ids = {self.bot.user.id}
+        if hasattr(self.bot, "pool") and hasattr(self.bot.pool, "bots"):
+            for b in self.bot.pool.bots:
+                if b.user:
+                    bot_ids.add(b.user.id)
+
+        voice_states = getattr(vc, "voice_states", None)
+        if voice_states:
+            candidate_ids = [uid for uid in voice_states.keys() if uid not in bot_ids]
+            if not candidate_ids:
+                return False
+
+            for uid in candidate_ids:
+                member = self.guild.get_member(uid)
+                if member:
+                    if not member.bot:
+                        return True
+                    continue
+
+                user = self.bot.get_user(uid)
+                if user:
+                    if not user.bot:
+                        return True
+                    continue
+
+                try:
+                    member = await self.guild.fetch_member(uid)
+                    if member and not member.bot:
+                        return True
+                except Exception:
+                    try:
+                        user = await self.bot.fetch_user(uid)
+                        if user and not user.bot:
+                            return True
+                    except Exception:
+                        return True
+
+            return False
+
+        try:
+            for m in vc.members:
+                if m.id not in bot_ids and not m.bot:
+                    return True
+        except Exception:
+            pass
+
+        return False
+
     async def members_timeout(self, check: bool, force: bool = False, idle_timeout = None):
 
         update_log = False
@@ -1194,7 +1252,7 @@ class LavalinkPlayer(wavelink.Player):
             except AttributeError:
                 vc = self.last_channel
 
-            if [m for m in vc.members if not m.bot and not (m.voice.deaf or m.voice.self_deaf)]:
+            if await self.has_active_members(vc):
                 try:
                     self.auto_skip_track_task.cancel()
                 except:
@@ -1209,7 +1267,12 @@ class LavalinkPlayer(wavelink.Player):
 
             await asyncio.sleep(idle_timeout)
 
-            if [m for m in vc.members if not m.bot and not (m.voice.deaf or m.voice.self_deaf)]:
+            try:
+                vc = self.guild.me.voice.channel
+            except AttributeError:
+                vc = self.last_channel
+
+            if await self.has_active_members(vc):
                 try:
                     self.auto_skip_track_task.cancel()
                 except:
@@ -1233,8 +1296,8 @@ class LavalinkPlayer(wavelink.Player):
             if self.is_closing:
                 return
 
-            msg = f"**Trình phát đã bị tắt vì thiếu thành viên trên kênh" + (f"<#{self.guild.me.voice.channel.id}>"
-                                                                               if self.guild.me.voice else '') + "...**"
+            msg = f"**Trình phát đã bị tắt vì thiếu thành viên trên kênh " + (f"<#{self.guild.me.voice.channel.id}>"
+                                                                                if self.guild.me.voice else '') + "...**"
             self.command_log = msg
             if not self.static and not self.has_thread:
                 embed = disnake.Embed(

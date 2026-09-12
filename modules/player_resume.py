@@ -575,7 +575,7 @@ class PlayerSession(commands.Cog):
             )
 
             try:
-                check = any(m for m in player.guild.me.voice.channel.members if not m.bot or not (m.voice.deaf or m.voice.self_deaf))
+                check = await player.has_active_members()
             except:
                 check = None
 
@@ -613,7 +613,7 @@ class PlayerSession(commands.Cog):
             except:
                 pass
 
-            player.members_timeout_task = self.bot.loop.create_task(player.members_timeout(check=check, idle_timeout=10))
+            player.members_timeout_task = self.bot.loop.create_task(player.members_timeout(check=bool(check)))
 
             self.bot.log.info(f"{self.bot.user} - Player Resumed: {guild.name} [{guild.id}] - Server: [{player.node.identifier}]")
 
