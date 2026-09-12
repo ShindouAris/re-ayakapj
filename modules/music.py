@@ -12,7 +12,7 @@ from base64 import b64decode
 from copy import deepcopy
 from random import shuffle
 from typing import Union, Optional
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 import aiofiles
 import aiohttp
@@ -1455,8 +1455,6 @@ class Music(commands.Cog):
                         else:
                             tracks.info["title"] = tracks.uri.split("/")[-1]
                         tracks.title = tracks.info["title"]
-
-                    tracks.uri = ""
 
             if not isinstance(tracks, list):
 
@@ -4847,7 +4845,22 @@ class Music(commands.Cog):
 
                     if player:
 
-                        if control == PlayerControls.embed_forceplay and player.current and (player.current.uri.startswith(url) or url.startswith(player.current.uri)):
+                        embed_author_name = ""
+                        try:
+                            embed_author_name = interaction.message.embeds[0].author.name or ""
+                        except (IndexError, AttributeError):
+                            pass
+
+                        def _is_match(t):
+                            if not t:
+                                return False
+                            if t.uri and url and (t.uri.startswith(url) or url.startswith(t.uri)):
+                                return True
+                            if embed_author_name and t.title and (t.title == embed_author_name or t.title.startswith(embed_author_name)):
+                                return True
+                            return False
+
+                        if control == PlayerControls.embed_forceplay and player.current and _is_match(player.current):
                             await self.check_stage_title(inter=interaction, bot=bot, player=player)
                             await player.seek(0)
                             player.set_command_log("quay lại phần đầu của bài hát.", emoji="⏪")
@@ -4860,14 +4873,14 @@ class Music(commands.Cog):
                         else:
 
                             for t in list(player.queue):
-                                if t.uri.startswith(url) or url.startswith(t.uri):
+                                if _is_match(t):
                                     track = t
                                     player.queue.remove(t)
                                     break
 
                             if not track:
                                 for t in list(player.played):
-                                    if t.uri.startswith(url) or url.startswith(t.uri):
+                                    if _is_match(t):
                                         track = t
                                         player.played.remove(t)
                                         break
@@ -4875,7 +4888,7 @@ class Music(commands.Cog):
                                 if not track:
 
                                     for t in list(player.failed_tracks):
-                                        if t.uri.startswith(url) or url.startswith(t.uri):
+                                        if _is_match(t):
                                             track = t
                                             player.failed_tracks.remove(t)
                                             break
@@ -6082,8 +6095,6 @@ class Music(commands.Cog):
                         track.info["title"] = track.uri.split("/")[-1]
                     track.title = track.info["title"]
 
-                track.uri = ""
-
             player.queue.append(track)
             if (isinstance(message.channel, disnake.Thread) and
                     (not isinstance(message.channel.parent, disnake.ForumChannel) or
@@ -6408,6 +6419,25 @@ class Music(commands.Cog):
 
         if not bot:
             bot = self.bot
+
+        if "youtube.com/results" in query and "search_query=" in query:
+            try:
+                parsed = urlparse(query)
+                q = parse_qs(parsed.query).get("search_query")
+                if q:
+                    query = unquote(q[0])
+                    source = "ytsearch"
+            except Exception:
+                pass
+        elif "music.youtube.com/search" in query and "q=" in query:
+            try:
+                parsed = urlparse(query)
+                q = parse_qs(parsed.query).get("q")
+                if q:
+                    query = unquote(q[0])
+                    source = "ytmsearch"
+            except Exception:
+                pass
 
         if not node:
             node = await self.get_best_node(bot)
