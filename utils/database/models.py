@@ -25,6 +25,17 @@ class Base(DeclarativeBase):
     pass
 
 
+def default_player_controller() -> Dict[str, Any]:
+    return {
+        "channel": None,
+        "message_id": None,
+        "skin": None,
+        "static_skin": None,
+        "fav_links": {},
+        "purge_mode": "on_message",
+    }
+
+
 class GuildConfig(Base):
     __tablename__ = "guild_configs"
 
@@ -37,7 +48,9 @@ class GuildConfig(Base):
     default_player_volume: Mapped[int] = mapped_column(Integer, default=100)
     enable_prefixed_commands: Mapped[bool] = mapped_column(Boolean, default=True)
     djroles: Mapped[List[Any]] = mapped_column(JsonType, default=list)
-    player_controller: Mapped[Dict[str, Any]] = mapped_column(JsonType, default=dict)
+    player_controller: Mapped[Dict[str, Any]] = mapped_column(
+        JsonType, default=default_player_controller
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -47,10 +60,15 @@ class GuildConfig(Base):
     )
 
     def to_dict(self) -> Dict[str, Any]:
+        ctrl = default_player_controller()
+        if self.player_controller and isinstance(self.player_controller, dict):
+            ctrl.update(self.player_controller)
+            if not isinstance(ctrl.get("fav_links"), dict):
+                ctrl["fav_links"] = {}
         return {
             "_id": str(self.guild_id),
             "ver": self.ver,
-            "player_controller": self.player_controller if self.player_controller is not None else {},
+            "player_controller": ctrl,
             "autoplay": self.autoplay,
             "check_other_bots_in_vc": self.check_other_bots_in_vc,
             "enable_restrict_mode": self.enable_restrict_mode,

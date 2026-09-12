@@ -772,13 +772,13 @@ class Music(commands.Cog):
             if not guild.me.voice:
                 can_connect(voice_channel, guild, guild_data["check_other_bots_in_vc"], bot=bot)
 
-            static_player = guild_data['player_controller']
+            static_player = guild_data.get('player_controller') or {}
 
             if not inter.response.is_done():
                 ephemeral = await self.is_request_channel(inter, data=guild_data, ignore_thread=True)
                 await inter.response.defer(ephemeral=ephemeral)
 
-            if static_player['channel']:
+            if static_player.get('channel'):
                 channel, warn_message, message = await self.check_channel(guild_data, inter, channel, guild, bot)
 
         if ephemeral is None:
@@ -1310,9 +1310,9 @@ class Music(commands.Cog):
                     else:
                         guild_data = await bot.get_data(inter.guild_id, db_name=DBModel.guilds)
 
-                static_player = guild_data['player_controller']
+                static_player = guild_data.get('player_controller') or {}
 
-                if static_player['channel']:
+                if static_player.get('channel'):
                     channel, warn_message, message = await self.check_channel(guild_data, inter, channel, guild, bot)
 
         if not player:
@@ -4477,10 +4477,13 @@ class Music(commands.Cog):
             bot: BotCore
     ):
 
-        static_player = guild_data['player_controller']
+        static_player = guild_data.get('player_controller') or {}
 
         warn_message = None
         message: Optional[disnake.Message] = None
+
+        if not static_player.get('channel'):
+            return channel, warn_message, message
 
         try:
             channel_db = bot.get_channel(int(static_player['channel'])) or await bot.fetch_channel(
@@ -5441,9 +5444,9 @@ class Music(commands.Cog):
 
         else:
 
-            static_player = data['player_controller']
+            static_player = data.get('player_controller') or {}
 
-            channel_id = static_player['channel']
+            channel_id = static_player.get('channel')
 
             if not channel_id:
                 return
@@ -5496,10 +5499,10 @@ class Music(commands.Cog):
 
                 if isinstance(message.channel.parent, disnake.ForumChannel):
 
-                    if data['player_controller']["channel"] != str(message.channel.id):
+                    if data.get('player_controller', {}).get("channel") != str(message.channel.id):
                         return
                     if message.is_system():
-                        await self.delete_message(message, ignore=data['player_controller']['purge_mode'] != SongRequestPurgeMode.on_message)
+                        await self.delete_message(message, ignore=data.get('player_controller', {}).get('purge_mode') != SongRequestPurgeMode.on_message)
 
         except AttributeError:
             pass
@@ -5511,9 +5514,9 @@ class Music(commands.Cog):
         try:
             if message.author.bot:
                 if message.is_system() and not isinstance(message.channel, disnake.Thread):
-                    await self.delete_message(message, ignore=data['player_controller']['purge_mode'] != SongRequestPurgeMode.on_message)
+                    await self.delete_message(message, ignore=data.get('player_controller', {}).get('purge_mode') != SongRequestPurgeMode.on_message)
                 if message.author.id == self.bot.user.id:
-                    await self.delete_message(message, delay=15, ignore=data['player_controller']['purge_mode'] != SongRequestPurgeMode.on_message)
+                    await self.delete_message(message, delay=15, ignore=data.get('player_controller', {}).get('purge_mode') != SongRequestPurgeMode.on_message)
                 return
 
             if not message.content:
@@ -5553,7 +5556,7 @@ class Music(commands.Cog):
                     f"{message.author.mention} ơi, bạn phải đợi bài hát mà bạn đã yêu cầu trước đó tải lên đã...",
                 )
 
-                await self.delete_message(message, ignore=data['player_controller']['purge_mode'] != SongRequestPurgeMode.on_message)
+                await self.delete_message(message, ignore=data.get('player_controller', {}).get('purge_mode') != SongRequestPurgeMode.on_message)
                 return
 
             message.content = message.content.strip("<>")
@@ -5615,7 +5618,7 @@ class Music(commands.Cog):
 
         if error:
 
-            await self.delete_message(message, ignore=data['player_controller']['purge_mode'] != SongRequestPurgeMode.on_message)
+            await self.delete_message(message, ignore=data.get('player_controller', {}).get('purge_mode') != SongRequestPurgeMode.on_message)
 
             try:
                 if msg:
@@ -5759,9 +5762,9 @@ class Music(commands.Cog):
         if not guild_data:
             inter, guild_data = await get_inter_guild_data(inter, bot)
 
-        skin = guild_data["player_controller"]["skin"]
-        static_skin = guild_data["player_controller"]["static_skin"]
-        static_player = guild_data["player_controller"]
+        static_player = guild_data.get("player_controller") or {}
+        skin = static_player.get("skin")
+        static_skin = static_player.get("static_skin")
 
         if not channel:
             channel = bot.get_channel(getattr(inter, 'channel_id', inter.channel.id))
@@ -5827,9 +5830,9 @@ class Music(commands.Cog):
             player_creator=inter.author.id,
             guild=guild,
             channel=channel,
-            last_message_id=guild_data['player_controller']['message_id'],
+            last_message_id=static_player.get('message_id'),
             node_id=node.identifier,
-            static=bool(static_player['channel']),
+            static=bool(static_player.get('channel')),
             skin=bot.check_skin(skin),
             skin_static=bot.check_static_skin(static_skin),
             custom_skin_data=global_data["custom_skins"],
@@ -5840,11 +5843,11 @@ class Music(commands.Cog):
             volume=int(guild_data['default_player_volume']),
             autoplay=guild_data["autoplay"],
             prefix=global_data["prefix"] or bot.default_prefix,
-            purge_mode=guild_data['player_controller']['purge_mode'],
+            purge_mode=static_player.get('purge_mode', SongRequestPurgeMode.on_message),
             stage_title_template=global_data['voice_channel_status'],
         )
 
-        if static_player['channel']:
+        if static_player.get('channel'):
 
             static_channel = bot.get_channel(int(static_player['channel'])) or await bot.fetch_channel(
                 int(static_player['channel']))
@@ -5947,8 +5950,8 @@ class Music(commands.Cog):
         tracks = await self.check_player_queue(message.author, self.bot, message.guild.id, tracks)
 
         try:
-            message_id = int(data['player_controller']['message_id'])
-        except TypeError:
+            message_id = int(data.get('player_controller', {}).get('message_id'))
+        except (TypeError, ValueError):
             message_id = None
 
         try:

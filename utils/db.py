@@ -25,6 +25,7 @@ from utils.database.models import (
     DefaultConfig,
     PlayerSession,
     GuildTTSLang,
+    default_player_controller,
 )
 
 if TYPE_CHECKING:
@@ -119,8 +120,11 @@ async def get_prefix(bot: BotCore, message: disnake.Message):
 def update_values(d, u):
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
-            d[k] = update_values(d.get(k, {}), v)
-        elif not isinstance(v, list):
+            sub_d = d.get(k)
+            if not isinstance(sub_d, collections.abc.Mapping):
+                sub_d = {}
+            d[k] = update_values(sub_d, v)
+        else:
             d[k] = v
     return d
 
@@ -181,7 +185,7 @@ class PostgresDatabase:
         default_model: dict = None,
     ) -> Dict[str, Any]:
         default_dict = (
-            default_model.get(db_name, {}).copy()
+            deepcopy(default_model.get(db_name, {}))
             if default_model and db_name in default_model
             else self.get_default(collection, db_name)
         )
@@ -233,7 +237,11 @@ class PostgresDatabase:
                     )
                     res = (await session.execute(stmt)).scalar_one_or_none()
                     if not res:
-                        res = GuildConfig(bot_id=bot_id, guild_id=guild_id)
+                        res = GuildConfig(
+                            bot_id=bot_id,
+                            guild_id=guild_id,
+                            player_controller=default_player_controller(),
+                        )
                         session.add(res)
                         await session.commit()
                     data = res.to_dict()
@@ -252,9 +260,9 @@ class PostgresDatabase:
                 else:
                     data = default_dict.copy()
 
-        # Cập nhật schema nếu version lệch
+        # Cập nhật schema nếu version lệch hoặc điền các trường mặc định còn thiếu
         if default_dict and data.get("ver") != default_dict.get("ver"):
-            data = update_values(default_dict.copy(), data)
+            data = update_values(deepcopy(default_dict), data)
             data["ver"] = default_dict["ver"]
             await self.update_data(
                 id_,
@@ -263,6 +271,8 @@ class PostgresDatabase:
                 collection=collection,
                 default_model=default_model,
             )
+        elif default_dict:
+            data = update_values(deepcopy(default_dict), data)
 
         data["_id"] = str(id_)
         return data
