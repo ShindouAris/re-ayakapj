@@ -482,7 +482,6 @@ class LavalinkPlayer(wavelink.Player):
         self.start_time = disnake.utils.utcnow()
 
         self.initial_hints = [
-            "None"
         ]
 
         self.retry_setup_hints = False
@@ -1789,7 +1788,7 @@ class LavalinkPlayer(wavelink.Player):
 
         kwargs = {
             "embed": embed,
-            "content": "None",
+            "content": "",
             "components": components,
             "allowed_mentions": self.allowed_mentions
         }
