@@ -11,7 +11,6 @@ from disnake.ext import commands, tasks
 import asyncio
 
 from utils.client import BotCore
-import aiosqlite
 
 LANGUAGE_LIST = ["English", "Tiếng Việt", "日本語", "русский", "中国人"]
 DATA_TTS_DIR = Path("./data_tts")
@@ -54,30 +53,17 @@ def check_voice():
     return commands.check(predicate)
 
 
-async def save_lang_tts(guildID, language):
-    async with aiosqlite.connect("langDB.sql") as comm:
-        cur = await comm.cursor()
-        await cur.execute("""INSERT INTO guildLang (guildID, language) VALUES (?, ?)""", (guildID, language))
-        await comm.commit()
+async def save_lang_tts(bot: BotCore, guildID: int, language: str):
+    await bot.pool.database.save_tts_lang(guildID, language)
 
-async def get_tts_lang(guildID):
-    async with aiosqlite.connect("langDB.sql") as comm:
-            mouse = await comm.cursor()
-            await mouse.execute("SELECT language FROM guildLang WHERE guildID = ?", (guildID,))
-            data = await mouse.fetchone()
-            if not data:
-                return "Tiếng Việt"
 
-            return data[0]
+async def get_tts_lang(bot: BotCore, guildID: int):
+    return await bot.pool.database.get_tts_lang(guildID)
 
 
 async def setup_table() -> None:
-    async with aiosqlite.connect("langDB.sql") as comm:
-        mouse = await comm.cursor()
-        await mouse.execute("""CREATE TABLE IF NOT EXISTS guildLang(
-                                                    guildID INTEGER,
-                                                    language TEXT DEFAULT 'Tiếng Việt')""")
-        await comm.commit()
+    # Quản lý qua Alembic và bot.pool.database.init_tables()
+    pass
 
 
 async def check_lang(lang):
@@ -302,7 +288,7 @@ class TTS(commands.Cog):
         if len(content) > 300:
             await inter.send("Bạn đang gửi nội dung dài, sẽ tốn một chút thời gian để bot xử lý...", delete_after=10)
 
-        lang = await get_tts_lang(inter.author.guild.id)
+        lang = await get_tts_lang(self.bot, inter.author.guild.id)
         convlang = await convert_language(lang)
 
         # Task
@@ -374,7 +360,7 @@ class TTS(commands.Cog):
             return
 
         await ctx.response.defer(ephemeral=True)
-        await save_lang_tts(ctx.author.guild.id, language)
+        await save_lang_tts(self.bot, ctx.author.guild.id, language)
         await ctx.edit_original_response(f"Language changed to: {language}")
 
     @tts_language.autocomplete('language')

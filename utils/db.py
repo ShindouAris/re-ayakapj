@@ -2,24 +2,36 @@
 from __future__ import annotations
 
 import collections.abc
-import json
-import os
-import shutil
-import traceback
+import logging
 from copy import deepcopy
-from datetime import datetime
-from typing import TYPE_CHECKING, Union
-from urllib.parse import urlparse, parse_qs, urlunparse, urlencode
+from typing import TYPE_CHECKING, Union, Optional, List, Dict, Any
 
 import disnake
 from disnake.ext import commands
-from motor.motor_asyncio import AsyncIOMotorClient
-from tinydb_serialization import Serializer, SerializationMiddleware
-from tinymongo import TinyMongoClient
-from tinymongo.serializers import DateTimeSerializer
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from utils.database.models import (
+    Base,
+    GuildConfig,
+    GuildGlobalConfig,
+    UserConfig,
+    UserGlobalConfig,
+    DefaultConfig,
+    PlayerSession,
+    GuildTTSLang,
+)
 
 if TYPE_CHECKING:
     from utils.client import BotCore
+
+logger = logging.getLogger(__name__)
+
 
 class DBModel:
     guilds = "guilds"
@@ -36,19 +48,19 @@ db_models = {
             "skin": None,
             "static_skin": None,
             "fav_links": {},
-            "purge_mode": "on_message"
+            "purge_mode": "on_message",
         },
         "autoplay": False,
         "check_other_bots_in_vc": False,
         "enable_restrict_mode": False,
         "default_player_volume": 100,
         "enable_prefixed_commands": True,
-        "djroles": []
+        "djroles": [],
     },
     DBModel.users: {
         "ver": 1.0,
         "fav_links": {},
-    }
+    },
 }
 
 global_db_models = {
@@ -71,15 +83,11 @@ global_db_models = {
         "custom_skins_static": {},
         "listen_along_invites": {},
     },
-    DBModel.default: {
-        "ver": 1.0,
-        "extra_tokens": {}
-    }
+    DBModel.default: {"ver": 1.0, "extra_tokens": {}},
 }
 
 
 async def get_prefix(bot: BotCore, message: disnake.Message):
-
     if str(message.content).startswith((f"<@!{bot.user.id}> ", f"<@{bot.user.id}> ")):
         return commands.when_mentioned(bot, message)
 
@@ -108,214 +116,6 @@ async def get_prefix(bot: BotCore, message: disnake.Message):
     return guild_prefix
 
 
-class BaseDB:
-
-    def get_default(self, collection: str, db_name: Union[DBModel.guilds, DBModel.users]):
-        if collection == "global":
-            return deepcopy(global_db_models[db_name])
-        return deepcopy(db_models[db_name])
-
-
-
-class DatetimeSerializer(Serializer):
-    OBJ_CLASS = datetime
-
-    def __init__(self, format='%Y-%m-%dT%H:%M:%S', *args, **kwargs):
-        super(DatetimeSerializer, self).__init__(*args, **kwargs)
-        self._format = format
-
-    def encode(self, obj):
-        return obj.strftime(self._format)
-
-    def decode(self, s):
-        return datetime.strptime(s, self._format)
-
-class CustomTinyMongoClient(TinyMongoClient):
-
-    @property
-    def _storage(self):
-        serialization = SerializationMiddleware()
-        serialization.register_serializer(DateTimeSerializer(), 'TinyDate')
-        return serialization
-
-
-class LocalDatabase(BaseDB):
-
-    def __init__(self, dir_="./local_database"):
-        super().__init__()
-
-        if not os.path.isdir(dir_):
-            os.makedirs(dir_, exist_ok=True)
-
-        self._connect = CustomTinyMongoClient(dir_)
-
-    async def get_data(self, id_: int, *, db_name: Union[DBModel.guilds, DBModel.users],
-                       collection: str, default_model: dict = None):
-
-        if not default_model:
-            default_model = db_models
-
-        id_ = str(id_)
-
-        data = self._connect[collection][db_name].find_one({"_id": id_})
-
-        if not data:
-            data = default_model[db_name].copy()
-            data["_id"] = str(id_)
-            self._connect[collection][db_name].insert_one(data)
-
-        elif data["ver"] != default_model[db_name]["ver"]:
-            data = update_values(default_model[db_name].copy(), data)
-            data["ver"] = default_model[db_name]["ver"]
-
-            await self.update_data(id_, data, db_name=db_name, collection=collection)
-
-        return data
-
-    async def update_data(self, id_, data: dict, *, db_name: Union[DBModel.guilds, DBModel.users],
-                          collection: str, default_model: dict = None):
-
-        id_ = str(id_)
-        data["_id"] = id_
-
-        try:
-            if not self._connect[collection][db_name].update_one({'_id': id_}, {'$set': data}).raw_result:
-                self._connect[collection][db_name].insert_one(data)
-        except:
-            traceback.print_exc()
-
-        return data
-
-    async def query_data(self, db_name: str, collection: str, filter: dict = None, limit=500) -> list:
-        return self._connect[collection][db_name].find(filter or {})
-
-    async def delete_data(self, id_, db_name: str, collection: str):
-        try:
-            return self._connect[collection][db_name].delete_one({'_id': str(id_)})
-        except TypeError:
-            return
-
-
-class MongoDatabase(BaseDB):
-
-    def __init__(self, token: str, timeout=30):
-        super().__init__()
-
-        try:
-            shutil.rmtree("./.db_cache")
-        except:
-            pass
-
-        self.cache = LocalDatabase(dir_="./.db_cache")
-
-        fix_ssl = os.environ.get("MONGO_SSL_FIX") or os.environ.get("REPL_SLUG")
-
-        if fix_ssl:
-            parse_result = urlparse(token)
-            parameters = parse_qs(parse_result.query)
-
-            parameters.update(
-                {
-                    'ssl': ['true'],
-                    'tlsAllowInvalidCertificates': ['true']
-                }
-            )
-
-            token = urlunparse(parse_result._replace(query=urlencode(parameters, doseq=True)))
-
-        self._connect = AsyncIOMotorClient(token.strip("<>"), connectTimeoutMS=timeout*1000)
-
-    async def push_data(self, data, *, db_name: Union[DBModel.guilds, DBModel.users], collection: str):
-        await self._connect[collection][db_name].insert_one(data)
-
-    async def update_from_json(self):
-
-        if not os.path.isdir("./local_dbs/backups"):
-            os.makedirs("./local_dbs/backups", exist_ok=True)
-
-        for f in os.listdir("./local_dbs"):
-
-            if not f.endswith(".json"):
-                continue
-
-            with open(f'./local_dbs/{f}') as file:
-                data = json.load(file)
-
-            for db_name, db_data in data.items():
-
-                if not db_data:
-                    continue
-
-                for id_, data in db_data.items():
-                    await self.update_data(id_=id_, data=data, db_name=db_name, collection=f[:-5])
-
-                try:
-                    shutil.move(f"./local_dbs/{f}", f"./local_dbs/backups/{f}")
-                except:
-                    traceback.print_exc()
-
-    async def get_secret_data(self, id_:int, db_name: Union[DBModel.users_secret, DBModel.global_secrets]):
-        return await self.get_data(
-            id_=id_, db_name=db_name, collection="global",
-            default_model=global_db_models
-        )
-
-    async def get_data(self, id_: int, *, db_name: Union[DBModel.guilds, DBModel.users],
-                       collection: str, default_model: dict = None):
-
-        if not default_model:
-            default_model = db_models
-
-        id_ = str(id_)
-
-        update_cache = False
-
-        try:
-            data = self.cache._connect[collection][db_name].find_one({"_id": id_})
-        except:
-            traceback.print_exc()
-            data = {}
-            update_cache = True
-
-        if not data:
-            data = await self._connect[collection][db_name].find_one({"_id": id_})
-
-        if not data:
-            data = default_model[db_name].copy()
-            try:
-                await self.cache.update_data(id_, data, db_name=db_name, collection=collection, default_model=default_model)
-            except:
-                traceback.print_exc()
-            return data
-
-        elif data["ver"] != default_model[db_name]["ver"]:
-            data = update_values(default_model[db_name].copy(), data)
-            data["ver"] = default_model[db_name]["ver"]
-            await self.update_data(id_, data, db_name=db_name, collection=collection)
-
-        elif update_cache:
-            try:
-                await self.cache.update_data(id_, data, db_name=db_name, collection=collection, default_model=default_model)
-            except:
-                traceback.print_exc()
-
-        return data
-
-    async def update_data(self, id_, data: dict, *, db_name: Union[DBModel.guilds, DBModel.users, str],
-                          collection: str, default_model: dict = None):
-
-        await self._connect[collection][db_name].update_one({'_id': str(id_)}, {'$set': data}, upsert=True)
-        await self.cache.update_data(id_, data, db_name=db_name, collection=collection, default_model=default_model)
-        return data
-
-    async def query_data(self, db_name: str, collection: str, filter: dict = None, limit=100) -> list:
-        return [d async for d in self._connect[collection][db_name].find(filter or {})]
-
-    async def delete_data(self, id_, db_name: str, collection: str):
-        await self.cache.delete_data(id_, db_name=db_name, collection=collection)
-        return await self._connect[collection][db_name].delete_one({'_id': str(id_)})
-
-
 def update_values(d, u):
     for k, v in u.items():
         if isinstance(v, collections.abc.Mapping):
@@ -323,3 +123,373 @@ def update_values(d, u):
         elif not isinstance(v, list):
             d[k] = v
     return d
+
+
+class PostgresDatabase:
+    def __init__(self, database_url: str):
+        # Đảm bảo sử dụng asyncpg driver
+        if database_url.startswith("postgres://"):
+            database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif database_url.startswith("postgresql://") and not database_url.startswith(
+            "postgresql+asyncpg://"
+        ):
+            database_url = database_url.replace(
+                "postgresql://", "postgresql+asyncpg://", 1
+            )
+
+        engine_kwargs = {"pool_pre_ping": True}
+        if not database_url.startswith("sqlite"):
+            engine_kwargs.update({
+                "pool_size": 10,
+                "max_overflow": 20,
+            })
+
+        self.engine: AsyncEngine = create_async_engine(
+            database_url,
+            **engine_kwargs,
+        )
+        self.session_maker = async_sessionmaker(
+            bind=self.engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+
+    async def init_tables(self):
+        """Khởi tạo bảng dự phòng nếu chưa chạy qua alembic upgrade head"""
+        try:
+            async with self.engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as e:
+            logger.warning(f"Tạo bảng tự động gặp cảnh báo (có thể đã tồn tại): {e}")
+
+    async def close(self):
+        await self.engine.dispose()
+
+    def get_default(
+        self, collection: str, db_name: Union[DBModel.guilds, DBModel.users, str]
+    ):
+        if collection == "global":
+            return deepcopy(global_db_models.get(db_name, {}))
+        return deepcopy(db_models.get(db_name, {}))
+
+    async def get_data(
+        self,
+        id_: Union[int, str],
+        *,
+        db_name: Union[DBModel.guilds, DBModel.users, str],
+        collection: str,
+        default_model: dict = None,
+    ) -> Dict[str, Any]:
+        default_dict = (
+            default_model.get(db_name, {}).copy()
+            if default_model and db_name in default_model
+            else self.get_default(collection, db_name)
+        )
+
+        async with self.session_maker() as session:
+            if collection == "global":
+                if db_name == DBModel.guilds:
+                    guild_id = int(id_)
+                    stmt = select(GuildGlobalConfig).where(
+                        GuildGlobalConfig.guild_id == guild_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if not res:
+                        res = GuildGlobalConfig(guild_id=guild_id)
+                        session.add(res)
+                        await session.commit()
+                    data = res.to_dict()
+
+                elif db_name == DBModel.users:
+                    user_id = int(id_)
+                    stmt = select(UserGlobalConfig).where(
+                        UserGlobalConfig.user_id == user_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if not res:
+                        res = UserGlobalConfig(user_id=user_id)
+                        session.add(res)
+                        await session.commit()
+                    data = res.to_dict()
+
+                elif db_name == DBModel.default:
+                    key = str(id_)
+                    stmt = select(DefaultConfig).where(DefaultConfig.id == key)
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if not res:
+                        res = DefaultConfig(id=key)
+                        session.add(res)
+                        await session.commit()
+                    data = res.to_dict()
+                else:
+                    data = default_dict.copy()
+
+            else:
+                bot_id = str(collection)
+                if db_name == DBModel.guilds:
+                    guild_id = int(id_)
+                    stmt = select(GuildConfig).where(
+                        GuildConfig.bot_id == bot_id, GuildConfig.guild_id == guild_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if not res:
+                        res = GuildConfig(bot_id=bot_id, guild_id=guild_id)
+                        session.add(res)
+                        await session.commit()
+                    data = res.to_dict()
+
+                elif db_name == DBModel.users:
+                    user_id = int(id_)
+                    stmt = select(UserConfig).where(
+                        UserConfig.bot_id == bot_id, UserConfig.user_id == user_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if not res:
+                        res = UserConfig(bot_id=bot_id, user_id=user_id)
+                        session.add(res)
+                        await session.commit()
+                    data = res.to_dict()
+                else:
+                    data = default_dict.copy()
+
+        # Cập nhật schema nếu version lệch
+        if default_dict and data.get("ver") != default_dict.get("ver"):
+            data = update_values(default_dict.copy(), data)
+            data["ver"] = default_dict["ver"]
+            await self.update_data(
+                id_,
+                data,
+                db_name=db_name,
+                collection=collection,
+                default_model=default_model,
+            )
+
+        data["_id"] = str(id_)
+        return data
+
+    async def update_data(
+        self,
+        id_: Union[int, str],
+        data: dict,
+        *,
+        db_name: Union[DBModel.guilds, DBModel.users, str],
+        collection: str,
+        default_model: dict = None,
+    ) -> Dict[str, Any]:
+        data["_id"] = str(id_)
+
+        async with self.session_maker() as session:
+            if collection == "player_sessions":
+                bot_id = str(db_name)
+                guild_id = int(id_)
+                session_payload = data.get("data", "")
+                stmt = select(PlayerSession).where(
+                    PlayerSession.bot_id == bot_id, PlayerSession.guild_id == guild_id
+                )
+                res = (await session.execute(stmt)).scalar_one_or_none()
+                if res:
+                    res.data = session_payload
+                else:
+                    res = PlayerSession(
+                        bot_id=bot_id, guild_id=guild_id, data=session_payload
+                    )
+                    session.add(res)
+                await session.commit()
+                return data
+
+            if collection == "global":
+                if db_name == DBModel.guilds:
+                    guild_id = int(id_)
+                    stmt = select(GuildGlobalConfig).where(
+                        GuildGlobalConfig.guild_id == guild_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if res:
+                        res.update_from_dict(data)
+                    else:
+                        res = GuildGlobalConfig(guild_id=guild_id)
+                        res.update_from_dict(data)
+                        session.add(res)
+                    await session.commit()
+                    return res.to_dict()
+
+                elif db_name == DBModel.users:
+                    user_id = int(id_)
+                    stmt = select(UserGlobalConfig).where(
+                        UserGlobalConfig.user_id == user_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if res:
+                        res.update_from_dict(data)
+                    else:
+                        res = UserGlobalConfig(user_id=user_id)
+                        res.update_from_dict(data)
+                        session.add(res)
+                    await session.commit()
+                    return res.to_dict()
+
+                elif db_name == DBModel.default:
+                    key = str(id_)
+                    stmt = select(DefaultConfig).where(DefaultConfig.id == key)
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if res:
+                        res.update_from_dict(data)
+                    else:
+                        res = DefaultConfig(id=key)
+                        res.update_from_dict(data)
+                        session.add(res)
+                    await session.commit()
+                    return res.to_dict()
+
+            else:
+                bot_id = str(collection)
+                if db_name == DBModel.guilds:
+                    guild_id = int(id_)
+                    stmt = select(GuildConfig).where(
+                        GuildConfig.bot_id == bot_id, GuildConfig.guild_id == guild_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if res:
+                        res.update_from_dict(data)
+                    else:
+                        res = GuildConfig(bot_id=bot_id, guild_id=guild_id)
+                        res.update_from_dict(data)
+                        session.add(res)
+                    await session.commit()
+                    return res.to_dict()
+
+                elif db_name == DBModel.users:
+                    user_id = int(id_)
+                    stmt = select(UserConfig).where(
+                        UserConfig.bot_id == bot_id, UserConfig.user_id == user_id
+                    )
+                    res = (await session.execute(stmt)).scalar_one_or_none()
+                    if res:
+                        res.update_from_dict(data)
+                    else:
+                        res = UserConfig(bot_id=bot_id, user_id=user_id)
+                        res.update_from_dict(data)
+                        session.add(res)
+                    await session.commit()
+                    return res.to_dict()
+
+        return data
+
+    async def query_data(
+        self, db_name: str, collection: str, filter: dict = None, limit=500
+    ) -> List[Dict[str, Any]]:
+        async with self.session_maker() as session:
+            if collection == "player_sessions":
+                bot_id = str(db_name)
+                stmt = (
+                    select(PlayerSession)
+                    .where(PlayerSession.bot_id == bot_id)
+                    .limit(limit)
+                )
+                records = (await session.execute(stmt)).scalars().all()
+                return [{"_id": str(r.guild_id), "data": r.data} for r in records]
+
+            if collection == "global":
+                if db_name == DBModel.guilds:
+                    stmt = select(GuildGlobalConfig).limit(limit)
+                    records = (await session.execute(stmt)).scalars().all()
+                    return [r.to_dict() for r in records]
+                elif db_name == DBModel.users:
+                    stmt = select(UserGlobalConfig).limit(limit)
+                    records = (await session.execute(stmt)).scalars().all()
+                    return [r.to_dict() for r in records]
+                elif db_name == DBModel.default:
+                    stmt = select(DefaultConfig).limit(limit)
+                    records = (await session.execute(stmt)).scalars().all()
+                    return [r.to_dict() for r in records]
+            else:
+                bot_id = str(collection)
+                if db_name == DBModel.guilds:
+                    stmt = (
+                        select(GuildConfig)
+                        .where(GuildConfig.bot_id == bot_id)
+                        .limit(limit)
+                    )
+                    records = (await session.execute(stmt)).scalars().all()
+                    return [r.to_dict() for r in records]
+                elif db_name == DBModel.users:
+                    stmt = (
+                        select(UserConfig)
+                        .where(UserConfig.bot_id == bot_id)
+                        .limit(limit)
+                    )
+                    records = (await session.execute(stmt)).scalars().all()
+                    return [r.to_dict() for r in records]
+
+        return []
+
+    async def delete_data(self, id_: Union[int, str], db_name: str, collection: str):
+        async with self.session_maker() as session:
+            if collection == "player_sessions":
+                bot_id = str(db_name)
+                guild_id = int(id_)
+                stmt = delete(PlayerSession).where(
+                    PlayerSession.bot_id == bot_id, PlayerSession.guild_id == guild_id
+                )
+                await session.execute(stmt)
+                await session.commit()
+                return
+
+            if collection == "global":
+                if db_name == DBModel.guilds:
+                    stmt = delete(GuildGlobalConfig).where(
+                        GuildGlobalConfig.guild_id == int(id_)
+                    )
+                elif db_name == DBModel.users:
+                    stmt = delete(UserGlobalConfig).where(
+                        UserGlobalConfig.user_id == int(id_)
+                    )
+                elif db_name == DBModel.default:
+                    stmt = delete(DefaultConfig).where(DefaultConfig.id == str(id_))
+                else:
+                    return
+            else:
+                bot_id = str(collection)
+                if db_name == DBModel.guilds:
+                    stmt = delete(GuildConfig).where(
+                        GuildConfig.bot_id == bot_id, GuildConfig.guild_id == int(id_)
+                    )
+                elif db_name == DBModel.users:
+                    stmt = delete(UserConfig).where(
+                        UserConfig.bot_id == bot_id, UserConfig.user_id == int(id_)
+                    )
+                else:
+                    return
+
+            await session.execute(stmt)
+            await session.commit()
+
+    async def get_secret_data(
+        self, id_: int, db_name: Union[DBModel.users, DBModel.guilds, DBModel.default]
+    ):
+        return await self.get_data(
+            id_=id_,
+            db_name=db_name,
+            collection="global",
+            default_model=global_db_models,
+        )
+
+    # Helper cho module TTS
+    async def get_tts_lang(self, guild_id: int) -> str:
+        async with self.session_maker() as session:
+            stmt = select(GuildTTSLang).where(GuildTTSLang.guild_id == int(guild_id))
+            res = (await session.execute(stmt)).scalar_one_or_none()
+            if not res or not res.language:
+                return "Tiếng Việt"
+            return res.language
+
+    async def save_tts_lang(self, guild_id: int, language: str) -> None:
+        async with self.session_maker() as session:
+            stmt = select(GuildTTSLang).where(GuildTTSLang.guild_id == int(guild_id))
+            res = (await session.execute(stmt)).scalar_one_or_none()
+            if res:
+                res.language = language
+            else:
+                res = GuildTTSLang(guild_id=int(guild_id), language=language)
+                session.add(res)
+            await session.commit()

@@ -1,0 +1,12 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+.logs
+.db_cache
+cache
+local_database
+*.sqlite
+*.sql
+*.md

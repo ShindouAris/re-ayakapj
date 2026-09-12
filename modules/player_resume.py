@@ -78,8 +78,8 @@ class PlayerSession(commands.Cog):
 
         while True:
 
-            if self.bot.config["PLAYER_SESSIONS_MONGODB"] and self.bot.config["MONGO"]:
-                await asyncio.sleep(self.bot.config["PLAYER_INFO_BACKUP_INTERVAL_MONGO"])
+            if self.bot.config["PLAYER_SESSIONS_DATABASE"]:
+                await asyncio.sleep(self.bot.config["PLAYER_INFO_BACKUP_INTERVAL_DB"])
             else:
                 await asyncio.sleep(self.bot.config["PLAYER_INFO_BACKUP_INTERVAL"])
 
@@ -278,18 +278,18 @@ class PlayerSession(commands.Cog):
 
         try:
 
-            mongo_sessions = await self.get_player_sessions_mongo()
+            db_sessions = await self.get_player_sessions_database()
             local_sessions = await self.get_player_sessions_local()
 
             data_list = {}
 
-            if self.bot.config["PLAYER_SESSIONS_MONGODB"] and self.bot.config["MONGO"]:
+            if self.bot.config["PLAYER_SESSIONS_DATABASE"]:
                 for d in local_sessions:
                     data_list[d["_id"]] = d
-                    self.bot.log.info(f"{self.bot.user} - Moving server session data: {d['_id']} | LocalDB -> Mongo")
-                    await self.save_session_mongo(d["_id"], d)
+                    self.bot.log.info(f"{self.bot.user} - Moving server session data: {d['_id']} | LocalDB -> PostgreSQL")
+                    await self.save_session_database(d["_id"], d)
                     self.delete_data_local(d["_id"])
-                for d in mongo_sessions:
+                for d in db_sessions:
                     data_list[d["_id"]] = d
 
             else:
@@ -608,15 +608,9 @@ class PlayerSession(commands.Cog):
         except Exception:
             self.bot.log.error(f"{self.bot.user} - Critical failure when resuming players:\n{traceback.format_exc()}")
 
-    async def get_player_sessions_mongo(self):
-
-        if not self.bot.config["MONGO"]:
-            return []
-
+    async def get_player_sessions_database(self):
         guild_data = []
-
-        for d in (await self.bot.pool.mongo_database.query_data(db_name=str(self.bot.user.id), collection="player_sessions")):
-
+        for d in (await self.bot.pool.database.query_data(db_name=str(self.bot.user.id), collection="player_sessions")):
             try:
                 data = d["data"]
             except KeyError:
@@ -630,6 +624,8 @@ class PlayerSession(commands.Cog):
             guild_data.append(pickle.loads(data))
 
         return guild_data
+
+    get_player_sessions_mongo = get_player_sessions_database
 
     async def get_player_sessions_local(self):
 
@@ -660,13 +656,15 @@ class PlayerSession(commands.Cog):
 
         return guild_data
 
-    async def save_session_mongo(self, id_: Union[int, str], data: dict):
-        await self.bot.pool.mongo_database.update_data(
+    async def save_session_database(self, id_: Union[int, str], data: dict):
+        await self.bot.pool.database.update_data(
             id_=str(id_),
             data={"data": b64encode(zlib.compress(pickle.dumps(data))).decode('utf-8')},
             collection="player_sessions",
             db_name=str(self.bot.user.id)
         )
+
+    save_session_mongo = save_session_database
 
     async def save_session_local(self, id_: Union[int, str], data: dict):
 
@@ -705,17 +703,19 @@ class PlayerSession(commands.Cog):
             return
 
         try:
-            if self.bot.config["PLAYER_SESSIONS_MONGODB"] and self.bot.config["MONGO"]:
-                await self.save_session_mongo(player.guild.id, data)
+            if self.bot.config["PLAYER_SESSIONS_DATABASE"]:
+                await self.save_session_database(player.guild.id, data)
             else:
                 await self.save_session_local(player.guild.id, data)
 
         except asyncio.CancelledError as e:
             print(f"❌ - {self.bot.user} - Save cancelled: {repr(e)}")
 
-    async def delete_data_mongo(self, id_: Union[LavalinkPlayer, int]):
-        await self.bot.pool.mongo_database.delete_data(id_=str(id_), db_name=str(self.bot.user.id),
-                                                       collection="player_sessions")
+    async def delete_data_database(self, id_: Union[LavalinkPlayer, int]):
+        await self.bot.pool.database.delete_data(id_=str(id_), db_name=str(self.bot.user.id),
+                                                collection="player_sessions")
+
+    delete_data_mongo = delete_data_database
 
     def delete_data_local(self, id_: Union[LavalinkPlayer, int]):
         for ext in ('.pkl', '.bak'):
@@ -733,8 +733,8 @@ class PlayerSession(commands.Cog):
         except AttributeError:
             guild_id = int(player)
 
-        if self.bot.config["PLAYER_SESSIONS_MONGODB"] and self.bot.config["MONGO"]:
-            await self.delete_data_mongo(guild_id)
+        if self.bot.config["PLAYER_SESSIONS_DATABASE"]:
+            await self.delete_data_database(guild_id)
         else:
             self.delete_data_local(guild_id)
 

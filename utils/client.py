@@ -27,7 +27,7 @@ from user_agent import generate_user_agent
 
 from config_loader import load_config
 from tools.spotify.spotify_url_resolver import Spotify_Worker
-from utils.db import MongoDatabase, LocalDatabase, get_prefix, DBModel, global_db_models
+from utils.db import PostgresDatabase, get_prefix, DBModel, global_db_models
 from utils.music.checks import check_pool_bots
 from utils.music.errors import GenericError
 from utils.music.local_lavalink import run_lavalink
@@ -61,9 +61,9 @@ class BotPool:
     def __init__(self):
         self.playlist_cache = {}
         self.user_prefix_cache = {}
-        self.guild_prefix_cache = {}
-        self.mongo_database: Optional[MongoDatabase] = None
-        self.local_database: Optional[LocalDatabase] = None
+        self.postgres_database: Optional[PostgresDatabase] = None
+        self.mongo_database: Optional[PostgresDatabase] = None
+        self.local_database: Optional[PostgresDatabase] = None
         self.ws_client: Optional[WSClient] = None
         self.spotify: Optional[spotipy.Spotify] = None
         self.lavalink_instance: Optional[subprocess.Popen] = None
@@ -87,12 +87,8 @@ class BotPool:
 
 
     @property
-    def database(self) -> Union[LocalDatabase, MongoDatabase]:
-
-        if self.config["MONGO"]:
-            return self.mongo_database
-
-        return self.local_database
+    def database(self) -> PostgresDatabase:
+        return self.postgres_database
 
     async def start_lavalink(self, loop=None):
 
@@ -258,15 +254,11 @@ class BotPool:
         intents.message_content = False
         intents.voice_states = True
 
-        mongo_key = self.config.get("MONGO")
-
-        if mongo_key:
-            self.mongo_database = MongoDatabase(mongo_key, timeout=self.config["MONGO_TIMEOUT"])
-            self.log.info("🔰 Database: MongoDB")
-        else:
-            self.log.info("🔰 Database: TinyMongo")
-
-        self.local_database = LocalDatabase()
+        postgres_url = self.config.get("POSTGRES_URL") or self.config.get("DATABASE_URL")
+        self.postgres_database = PostgresDatabase(postgres_url)
+        self.mongo_database = self.postgres_database
+        self.local_database = self.postgres_database
+        self.log.info("🔰 Database: PostgreSQL (SQLAlchemy Async)")
 
         try:
             self.commit = check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
@@ -521,6 +513,7 @@ class BotPool:
                 print(message)
 
         loop = asyncio.get_event_loop()
+        loop.create_task(self.postgres_database.init_tables())
 
         if start_local:
             loop.create_task(self.start_lavalink(loop=loop))
@@ -699,6 +692,11 @@ class BotCore(commands.AutoShardedBot):
                     shutil.rmtree(item_path)
                 else:
                     os.remove(item_path)
+        if self.pool and self.pool.postgres_database:
+            try:
+                await self.pool.postgres_database.close()
+            except:
+                pass
         await super().close()
 
     def check_skin(self, skin: str):

@@ -4,9 +4,10 @@ python-dotenv
 user_agent
 requests
 humanize
-motor
-tinymongo
-tinydb-serialization
+sqlalchemy[asyncio]>=2.0.36
+asyncpg>=0.30.0
+psycopg2-binary>=2.9.10
+alembic>=1.14.0
 psutil
 aiofiles
 packaging
@@ -14,11 +15,6 @@ tornado
 spotipy
 colorama
 asgiref
-aiosqlite
-gTTS
-yt-dlp
-nodriver
-pymongo
 aiohttp
 pytz
 websocket-client
@@ -26,3 +22,6 @@ soundcloud-v2
 pytube
 RapidFuzz
 dave-py
+gTTS
+yt-dlp
+nodriver

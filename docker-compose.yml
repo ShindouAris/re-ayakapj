@@ -1,14 +1,21 @@
 services:
-  lavalink:
-    build: lavalink
+  postgres:
+    image: postgres:16-alpine
+    container_name: ayakapj-postgres
     restart: unless-stopped
-    env_file:
-      - lavalink.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ayakapj}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "curl", "--head", "http://localhost:2333"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-ayakapj}"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
   
   ayakapj:
     build: .
@@ -17,8 +24,13 @@ services:
     env_file:
       - .env
     depends_on:
+      postgres:
+        condition: service_healthy
       lavalink:
         condition: service_healthy
+
+volumes:
+  postgres_data:
 
 networks:
   default:

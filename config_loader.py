@@ -36,6 +36,8 @@ DEFAULT_CONFIG = {
     ################
     ### Database ###
     ################
+    "POSTGRES_URL": "postgresql+asyncpg://postgres:postgres@localhost:5432/ayakapj",
+    "DATABASE_URL": "",
     "MONGO": "",
     "MONGO_TIMEOUT": 30,
     "SENSITIVE_INFO_WARN": True,
@@ -61,7 +63,9 @@ DEFAULT_CONFIG = {
     "ADD_REGISTER_COMMAND": False,
     "ENABLE_DISCORD_URLS_PLAYBACK": True,
     "PLAYER_INFO_BACKUP_INTERVAL": 45,
+    "PLAYER_INFO_BACKUP_INTERVAL_DB": 300,
     "PLAYER_INFO_BACKUP_INTERVAL_MONGO": 300,
+    "PLAYER_SESSIONS_DATABASE": False,
     "PLAYER_SESSIONS_MONGODB": False,
     "QUEUE_MAX_ENTRIES": 0,
     "ENABLE_DEFER_TYPING": True,
@@ -188,6 +192,7 @@ def load_config():
         "INVITE_PERMISSIONS",
         "PREFIXED_POOL_TIMEOUT",
         "PLAYER_INFO_BACKUP_INTERVAL",
+        "PLAYER_INFO_BACKUP_INTERVAL_DB",
         "PLAYER_INFO_BACKUP_INTERVAL_MONGO",
         "LAVALINK_RECONNECT_RETRIES",
         "QUEUE_MAX_ENTRIES",
@@ -213,6 +218,7 @@ def load_config():
         "GUILD_DEAFEN_WARN",
         "ADD_REGISTER_COMMAND",
         "ENABLE_DISCORD_URLS_PLAYBACK",
+        "PLAYER_SESSIONS_DATABASE",
         "PLAYER_SESSIONS_MONGODB",
         "SENSITIVE_INFO_WARN",
         "ENABLE_DEFER_TYPING",
@@ -267,6 +273,21 @@ def load_config():
 
     if CONFIG["PLAYER_INFO_BACKUP_INTERVAL_MONGO"] < 120:
         CONFIG["PLAYER_INFO_BACKUP_INTERVAL_MONGO"] = 120
+
+    if CONFIG["PLAYER_INFO_BACKUP_INTERVAL_DB"] < 120:
+        CONFIG["PLAYER_INFO_BACKUP_INTERVAL_DB"] = 120
+
+    if CONFIG.get("DATABASE_URL") and not CONFIG.get("POSTGRES_URL"):
+        CONFIG["POSTGRES_URL"] = CONFIG["DATABASE_URL"]
+
+    if CONFIG.get("POSTGRES_URL"):
+        if CONFIG["POSTGRES_URL"].startswith("postgres://"):
+            CONFIG["POSTGRES_URL"] = CONFIG["POSTGRES_URL"].replace("postgres://", "postgresql+asyncpg://", 1)
+        elif CONFIG["POSTGRES_URL"].startswith("postgresql://") and not CONFIG["POSTGRES_URL"].startswith("postgresql+asyncpg://"):
+            CONFIG["POSTGRES_URL"] = CONFIG["POSTGRES_URL"].replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    if CONFIG.get("PLAYER_SESSIONS_MONGODB"):
+        CONFIG["PLAYER_SESSIONS_DATABASE"] = CONFIG["PLAYER_SESSIONS_DATABASE"] or CONFIG["PLAYER_SESSIONS_MONGODB"]
 
     if CONFIG["LAVALINK_RECONNECT_RETRIES"] < 5:
         CONFIG["LAVALINK_RECONNECT_RETRIES"] = 0
